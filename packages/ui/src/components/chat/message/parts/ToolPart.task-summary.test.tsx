@@ -7,6 +7,7 @@ import { Window } from 'happy-dom';
 import { OpenCode } from '@opencode/client';
 import type { ToolPart as ToolPartData } from '@/lib/opencode/model';
 import { SyncProvider, useChildStoreManager } from '@/sync/sync-context';
+import { getImperativeSessionMessageLoader } from '@/sync/session-message-loader';
 import { I18nProvider } from '@/lib/i18n';
 import { ThemeSystemContext, type ThemeContextValue } from '@/contexts/theme-system-context';
 import { getDefaultTheme } from '@/lib/theme/themes';
@@ -68,9 +69,28 @@ const patchPart = (paths: string[]): ToolPartData => ({
   },
 });
 
+const contextPart = (id: string, tool: 'read' | 'grep'): ToolPartData => ({
+  id, sessionID: 'child', messageID: 'child-message', type: 'tool', tool, callID: id,
+  state: tool === 'read'
+    ? { status: 'completed', input: { filePath: '/workspace/README.md' }, output: '', time: { start: 1, end: 2 } }
+    : { status: 'completed', input: { pattern: 'needle' }, output: '', time: { start: 1, end: 2 } },
+});
+
+const childSession = (id: string) => ({
+  id, parentID: 'parent', projectID: 'p', directory: '/workspace', title: id, agent: 'build',
+  cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  time: { created: 1, updated: 1 },
+});
+
 const withHarness = async (
-  toolPart: ToolPartData,
-  run: (store: ReturnType<ReturnType<typeof useChildStoreManager>['ensureChild']>, container: HTMLElement) => Promise<void>,
+    toolPart: ToolPartData,
+    run: (
+      store: ReturnType<ReturnType<typeof useChildStoreManager>['ensureChild']>,
+      container: HTMLElement,
+      renderTool: (part: ToolPartData, isExpanded: boolean) => Promise<void>,
+    ) => Promise<void>,
+    initialExpanded = true,
+    prepare?: (store: ReturnType<ReturnType<typeof useChildStoreManager>['ensureChild']>) => Promise<void>,
 ) => {
   const happyWindow = new Window({ url: 'http://localhost' });
   const globals = {
@@ -109,6 +129,20 @@ const withHarness = async (
   const previousDirectory = useDirectoryStore.getState().currentDirectory;
   let manager: ReturnType<typeof useChildStoreManager> | undefined;
   const CaptureManager = () => { manager = useChildStoreManager(); return null; };
+  const renderTool = async (part: ToolPartData, isExpanded: boolean) => {
+    await act(async () => {
+      root.render(
+        <SyncProvider sdk={sdk} directory="/workspace">
+          <CaptureManager />
+          <I18nProvider>
+            <ThemeSystemContext.Provider value={themeContext}>
+              <ToolPart part={part} isExpanded={isExpanded} isMobile={false} onToggle={() => {}} />
+            </ThemeSystemContext.Provider>
+          </I18nProvider>
+        </SyncProvider>,
+      );
+    });
+  };
   try {
     useDirectoryStore.setState({ currentDirectory: '/workspace' });
     useGuestsStore.setState({ status: 'ready', guests: [], runtimeKey: 'test' });
@@ -116,17 +150,15 @@ const withHarness = async (
       root.render(
         <SyncProvider sdk={sdk} directory="/workspace">
           <CaptureManager />
-          <I18nProvider>
-            <ThemeSystemContext.Provider value={themeContext}>
-              <ToolPart part={toolPart} isExpanded isMobile={false} onToggle={() => {}} />
-            </ThemeSystemContext.Provider>
-          </I18nProvider>
         </SyncProvider>,
       );
     });
-
     if (!manager) throw new Error('Sync manager did not mount');
-    await run(manager.ensureChild('/workspace', { bootstrap: false }), container);
+    const store = manager.ensureChild('/workspace', { bootstrap: false });
+    await prepare?.(store);
+    await renderTool(toolPart, initialExpanded);
+
+    await run(store, container, renderTool);
   } finally {
     await act(async () => { root.unmount(); });
     useDirectoryStore.setState({ currentDirectory: previousDirectory });
@@ -193,4 +225,97 @@ test('a running subagent without the progress join resolves its child session fr
     expect(container.textContent).not.toContain('Waiting for subagent activity');
     expect(container.textContent).toContain('found.ts');
   });
+});
+
+test('a collapsed finalized subagent with metadata fallback still renders authoritative child activity first', async () => {
+  const finalizedWithFallback: ToolPartData = {
+    ...parent,
+    state: {
+      status: 'completed', input: parent.state.input, output: '', time: { start: 1, end: 2 },
+      metadata: {
+        sessionID: 'child',
+        summary: [{ id: 'fallback', tool: 'shell', state: { status: 'completed', title: 'fallback action' } }],
+      },
+    },
+  };
+  await withHarness(finalizedWithFallback, async (store, container, renderTool) => {
+    await act(async () => store.setState({
+      message: { child: [{
+        id: 'child-message', sessionID: 'child', role: 'assistant',
+        agent: 'build', providerID: 'test', modelID: 'test', time: { created: 1, completed: 2 },
+      }] },
+      part: { 'child-message': [contextPart('read-child', 'read'), contextPart('grep-child', 'grep')] },
+    }));
+    expect(container.textContent).toContain('Explored');
+    expect(container.textContent).toContain('1 read');
+    expect(container.textContent).toContain('1 search');
+    expect(container.textContent).not.toContain('fallback action');
+    await renderTool(finalizedWithFallback, false);
+    expect(container.textContent).toContain('Explored');
+    expect(container.textContent).not.toContain('fallback action');
+  }, false, async (store) => {
+    await act(async () => store.setState({ session: [childSession('child')] }));
+  });
+});
+
+test('Agent Task materialization waits for expansion only when finalized metadata already summarizes an indexed child', async () => {
+  const finalizedWithFallback: ToolPartData = {
+    ...parent,
+    state: {
+      status: 'completed', input: parent.state.input, output: '', time: { start: 1, end: 2 },
+      metadata: {
+        sessionID: 'child',
+        summary: [{ id: 'fallback', tool: 'shell', state: { status: 'completed', title: 'fallback action' } }],
+      },
+    },
+  };
+  let refreshes = 0;
+  let restoreRefreshTail: (() => void) | undefined;
+  await withHarness(finalizedWithFallback, async (_store, _container, renderTool) => {
+    expect(refreshes).toBe(0);
+    await renderTool(finalizedWithFallback, true);
+    await act(async () => { await Promise.resolve(); });
+    expect(refreshes).toBe(1);
+  }, false, async (store) => {
+    const loader = getImperativeSessionMessageLoader();
+    if (!loader) throw new Error('SyncProvider did not register its public session loader');
+    const refreshTail = loader.refreshTail;
+    loader.refreshTail = async () => { refreshes += 1; };
+    restoreRefreshTail = () => { loader.refreshTail = refreshTail; };
+    await act(async () => store.setState({ session: [childSession('child')] }));
+  }).finally(() => restoreRefreshTail?.());
+});
+
+test('Agent Task materializes indexed children without a valid finalized fallback, including running tasks', async () => {
+  const cases: Array<{ sessionID: string; part: ToolPartData }> = [
+    {
+      sessionID: 'child-running',
+      part: {
+        ...parent,
+        state: { status: 'running', input: parent.state.input, time: { start: 1 }, metadata: { sessionID: 'child-running' } },
+      },
+    },
+    {
+      sessionID: 'child-no-fallback',
+      part: {
+        ...parent,
+        state: { status: 'completed', input: parent.state.input, output: '', time: { start: 1, end: 2 }, metadata: { sessionID: 'child-no-fallback' } },
+      },
+    },
+  ];
+  for (const fixture of cases) {
+    let refreshes = 0;
+    let restoreRefreshTail: (() => void) | undefined;
+    await withHarness(fixture.part, async () => {
+      await act(async () => { await Promise.resolve(); });
+      expect(refreshes).toBe(1);
+    }, false, async (store) => {
+      const loader = getImperativeSessionMessageLoader();
+      if (!loader) throw new Error('SyncProvider did not register its public session loader');
+      const refreshTail = loader.refreshTail;
+      loader.refreshTail = async () => { refreshes += 1; };
+      restoreRefreshTail = () => { loader.refreshTail = refreshTail; };
+      await act(async () => store.setState({ session: [childSession(fixture.sessionID)] }));
+    }).finally(() => restoreRefreshTail?.());
+  }
 });

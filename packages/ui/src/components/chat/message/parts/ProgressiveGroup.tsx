@@ -1,6 +1,5 @@
 import { isSkillTool, toolDescription } from '@/lib/opencode/tools';
 import React from 'react';
-import { useMobileAppActions } from '@/apps/mobileAppContext';
 import { cn } from '@/lib/utils';
 import type { TurnActivityRecord as TurnActivityPart } from '../../lib/turns/types';
 import type { Metadata, ToolInput, ToolPart as ToolPartType } from '@/lib/opencode/model';
@@ -16,8 +15,6 @@ import { FadeInOnReveal } from '../FadeInOnReveal';
 import { getToolIcon } from './toolPresentation';
 import { getToolMetadata } from '@/lib/toolHelpers';
 import { useGuestToolPresentation } from '@/lib/guests/tool-presentation';
-import { isExpandableTool, isStandaloneTool, isStaticTool } from './toolRenderUtils';
-import { RuntimeAPIContext } from '@/contexts/runtimeAPIContext';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSkillsStore } from '@/stores/useSkillsStore';
@@ -25,7 +22,11 @@ import ReasoningPart from './ReasoningPart';
 import JustificationBlock from './JustificationBlock';
 import { areRenderRelevantPartsEqual } from '../renderCompare';
 import { getExternalFaviconUrl } from '@/lib/url';
-import { getDirectoryForFilePath, getRelativeFilePath, isFilePathWithinDirectory, normalizeFilePath, toAbsoluteFilePath } from '@/lib/path-utils';
+import { getRelativeFilePath, normalizeFilePath } from '@/lib/path-utils';
+import { ContextToolGroupRow } from './ContextToolGroupRow';
+import { projectToolSegmentRows } from './toolSegmentProjection';
+import type { ToolSegmentRow } from './toolSegmentProjection';
+import { useFileNavigation } from './useFileNavigation';
 
 const TOOL_ROW_TEXT_CLASS = '!text-[length:var(--text-meta)] !leading-5 sm:!leading-6 tracking-normal';
 const TOOL_ROW_TITLE_CLASS = cn('typography-meta font-medium', TOOL_ROW_TEXT_CLASS);
@@ -45,6 +46,7 @@ interface ProgressiveGroupProps {
     animateRows?: boolean;
     animatedToolIds?: Set<string>;
     renderJustificationActions?: (activity: TurnActivityPart) => React.ReactNode;
+    showReasoningTraces?: boolean;
 }
 
 const ExternalLinkFavicon: React.FC<{ href: string }> = ({ href }) => {
@@ -239,15 +241,14 @@ const getToolShortDescription = (activity: TurnActivityPart): string | null => {
 };
 
 type AggregatedRow =
-    | { type: 'tool-expandable'; activity: TurnActivityPart }
-    | { type: 'tool-static-group'; toolName: string; activities: TurnActivityPart[] }
+    | ToolSegmentRow
     | { type: 'reasoning'; activity: TurnActivityPart }
-    | { type: 'justification'; activity: TurnActivityPart }
-    | { type: 'tool-fallback'; activity: TurnActivityPart };
+    | { type: 'justification'; activity: TurnActivityPart };
 
 interface ExpandableToolRowProps {
     activity: TurnActivityPart;
     isExpanded: boolean;
+    expandedTools: ReadonlySet<string>;
     isMobile: boolean;
     onToggleTool: (toolId: string) => void;
     onShowPopup: (content: ToolPopupContent) => void;
@@ -257,20 +258,18 @@ interface ExpandableToolRowProps {
 const ExpandableToolRow: React.FC<ExpandableToolRowProps> = ({
     activity,
     isExpanded,
+    expandedTools,
     isMobile,
     onToggleTool,
     onShowPopup,
     animateTailText,
 }) => {
-    const handleToggle = React.useCallback(() => {
-        onToggleTool(activity.id);
-    }, [activity.id, onToggleTool]);
-
     const content = (
         <ToolPart
             part={activity.part as ToolPartType}
             isExpanded={isExpanded}
-            onToggle={handleToggle}
+            expandedTools={expandedTools}
+            onToggle={onToggleTool}
             isMobile={isMobile}
             onShowPopup={onShowPopup}
             animateTailText={animateTailText}
@@ -292,6 +291,7 @@ const ExpandableToolRow: React.FC<ExpandableToolRowProps> = ({
 
 const MemoExpandableToolRow = React.memo(ExpandableToolRow, (prev, next) => {
     return prev.isExpanded === next.isExpanded
+        && prev.expandedTools === next.expandedTools
         && prev.isMobile === next.isMobile
         && prev.onToggleTool === next.onToggleTool
         && prev.onShowPopup === next.onShowPopup
@@ -347,52 +347,37 @@ const MemoStaticGroupedToolRow = React.memo(StaticGroupedToolRow, (prev, next) =
  * Expandable tools (edit, bash, write, question) stay as individual rows.
  * Unknown tools stay as individual expandable rows (fallback).
  */
-const aggregateRows = (parts: TurnActivityPart[]): AggregatedRow[] => {
+const aggregateRows = (parts: TurnActivityPart[], showReasoningTraces: boolean): AggregatedRow[] => {
     const rows: AggregatedRow[] = [];
+    const toolSegment: TurnActivityPart[] = [];
 
-    let i = 0;
-    while (i < parts.length) {
-        const activity = parts[i];
+    const flushToolSegment = () => {
+        if (toolSegment.length === 0) {
+            return;
+        }
+        rows.push(...projectToolSegmentRows(toolSegment));
+        toolSegment.length = 0;
+    };
 
+    for (const activity of parts) {
         if (activity.kind === 'reasoning') {
-            rows.push({ type: 'reasoning', activity });
-            i++;
+            flushToolSegment();
+            if (showReasoningTraces) {
+                rows.push({ type: 'reasoning', activity });
+            }
             continue;
         }
 
         if (activity.kind === 'justification') {
+            flushToolSegment();
             rows.push({ type: 'justification', activity });
-            i++;
             continue;
         }
 
-        // Tool part
-        const toolPart = activity.part as ToolPartType;
-        const toolName = toolPart.tool?.toLowerCase() ?? '';
-
-        if (isStandaloneTool(toolName)) {
-            // Standalone tools are rendered separately, skip
-            i++;
-            continue;
-        }
-
-        if (isExpandableTool(toolName)) {
-            rows.push({ type: 'tool-expandable', activity });
-            i++;
-            continue;
-        }
-
-        if (isStaticTool(toolName)) {
-            rows.push({ type: 'tool-static-group', toolName, activities: [activity] });
-            i++;
-            continue;
-        }
-
-        // Unknown/fallback tool — keep as expandable
-        rows.push({ type: 'tool-fallback', activity });
-        i++;
+        toolSegment.push(activity);
     }
 
+    flushToolSegment();
     return rows;
 };
 
@@ -442,8 +427,6 @@ const StaticToolRowInner: React.FC<{
     const displayName = presentation?.name ?? getToolMetadata(toolName).displayName;
     const icon = getToolIcon(toolName, presentation);
     const isReadGroup = toolName.toLowerCase() === 'read';
-    const runtime = React.useContext(RuntimeAPIContext);
-    const mobileActions = useMobileAppActions();
     const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
     const skills = useSkillsStore((state) => state.skills);
     const hasRunningActivity = React.useMemo(() => activities.some((activity) => isActivityRunning(activity)), [activities]);
@@ -494,51 +477,7 @@ const StaticToolRowInner: React.FC<{
         return entries;
     }, [activities, currentDirectory, isReadGroup]);
 
-    const handleFileClick = React.useCallback((filePath: string, offset?: number) => {
-        const absolutePath = toAbsoluteFilePath(currentDirectory, filePath);
-        if (!absolutePath) {
-            return;
-        }
-
-        if (runtime?.editor) {
-            void runtime.editor.openFile(absolutePath, offset);
-            return;
-        }
-
-        // Dedicated mobile app: stage the same pending file focus/navigation
-        // desktop uses, then surface the Files pane (workspace drawer tab),
-        // which consumes it.
-        if (mobileActions) {
-            const uiStore = useUIStore.getState();
-            const contextDirectory = currentDirectory || getDirectoryForFilePath(currentDirectory, absolutePath);
-            if (offset && Number.isFinite(offset)) {
-                uiStore.openContextFileAtLine(contextDirectory, absolutePath, Math.max(1, Math.trunc(offset)), 1);
-            } else {
-                uiStore.openContextFile(contextDirectory, absolutePath);
-            }
-            mobileActions.openFiles();
-            return;
-        }
-
-        if (!isFilePathWithinDirectory(absolutePath, currentDirectory)) {
-            const uiStore = useUIStore.getState();
-            const contextDirectory = currentDirectory || getDirectoryForFilePath(currentDirectory, absolutePath);
-            if (offset && Number.isFinite(offset)) {
-                uiStore.openContextFileAtLine(contextDirectory, absolutePath, Math.max(1, Math.trunc(offset)), 1);
-                return;
-            }
-            uiStore.openContextFile(contextDirectory, absolutePath);
-            return;
-        }
-
-        const uiStore = useUIStore.getState();
-        const contextDirectory = getDirectoryForFilePath(currentDirectory, absolutePath);
-        if (offset && Number.isFinite(offset)) {
-            uiStore.openContextFileAtLine(contextDirectory, absolutePath, Math.max(1, Math.trunc(offset)), 1);
-            return;
-        }
-        uiStore.openContextFile(contextDirectory, absolutePath);
-    }, [currentDirectory, mobileActions, runtime]);
+    const handleFileClick = useFileNavigation();
 
     const normalizedToolName = toolName.toLowerCase();
     const isSearchGroup = normalizedToolName === 'grep'
@@ -705,6 +644,7 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
     animateRows = true,
     animatedToolIds,
     renderJustificationActions,
+    showReasoningTraces = true,
 }) => {
     const previewCount = showHeader && !isExpanded
         ? Math.max(0, Math.floor(collapsedPreviewCount))
@@ -722,15 +662,17 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
         if (!shouldRenderRows) {
             return [] as AggregatedRow[];
         }
-        return aggregateRows(sortedParts);
-    }, [shouldRenderRows, sortedParts]);
+        return aggregateRows(sortedParts, showReasoningTraces);
+    }, [shouldRenderRows, showReasoningTraces, sortedParts]);
 
     const previewHiddenCount = React.useMemo(() => {
         if (isExpanded || previewCount === 0) {
             return 0;
         }
-        return Math.max(0, rows.length - previewCount);
-    }, [isExpanded, previewCount, rows.length]);
+        return rows.slice(0, -previewCount).reduce((count, row) => {
+            return count + (row.type === 'context-tool-group' ? row.activities.length : 1);
+        }, 0);
+    }, [isExpanded, previewCount, rows]);
 
     const visibleRows = React.useMemo(() => {
         if (isExpanded || previewCount === 0) {
@@ -751,7 +693,7 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
     };
 
     const renderedRows = shouldRenderRows
-        ? visibleRows.map((row, index) => {
+        ? visibleRows.map((row) => {
         switch (row.type) {
             case 'reasoning':
                 return wrapRow(
@@ -778,9 +720,10 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
             case 'tool-expandable':
                 return (
                     <MemoExpandableToolRow
-                        key={row.activity.id}
+                        key={row.key}
                         activity={row.activity}
                         isExpanded={expandedTools.has(row.activity.id)}
+                        expandedTools={expandedTools}
                         isMobile={isMobile}
                         onToggleTool={onToggleTool}
                         onShowPopup={onShowPopup}
@@ -788,28 +731,34 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
                     />
                 );
 
-            case 'tool-static-group':
+            case 'tool-static':
                 return (
                     <MemoStaticGroupedToolRow
-                        key={`static-${row.toolName}-${row.activities[0]?.id ?? index}`}
+                        key={row.key}
                         toolName={row.toolName}
-                        activities={row.activities}
-                        animateTailText={row.activities.some((activity) => animatedToolIds?.has(activity.id))}
-                    />
-                );
-
-            case 'tool-fallback':
-                return (
-                    <MemoExpandableToolRow
-                        key={row.activity.id}
-                        activity={row.activity}
-                        isExpanded={expandedTools.has(row.activity.id)}
-                        isMobile={isMobile}
-                        onToggleTool={onToggleTool}
-                        onShowPopup={onShowPopup}
+                        activities={[row.activity]}
                         animateTailText={Boolean(animatedToolIds?.has(row.activity.id))}
                     />
                 );
+
+            case 'context-tool-group': {
+                const animateContextRow = row.activities.some((activity) => animatedToolIds?.has(activity.id));
+                return wrapRow(
+                    row.key,
+                    <ToolRevealOnMount animate={animateContextRow} wipe>
+                        <ContextToolGroupRow
+                            rowKey={row.key}
+                            status={row.status}
+                            counts={row.counts}
+                            children={row.children}
+                            renderSignature={row.renderSignature}
+                            animateTailText={animateContextRow}
+                            isExpanded={expandedTools.has(row.key)}
+                            onToggleTool={onToggleTool}
+                        />
+                    </ToolRevealOnMount>
+                );
+            }
 
             default:
                 return null;

@@ -219,18 +219,30 @@ const SubagentRunNotice: React.FC<{ message: SyntheticMessage; run: SubagentRun 
     const isMobile = useUIStore((state) => state.isMobile);
     const chatSurfaceMode = useChatSurfaceMode();
     const [expanded, setExpanded] = React.useState(false);
+    const [expandedTools, setExpandedTools] = React.useState<ReadonlySet<string>>(() => new Set());
     const child = useSession(run.childSessionID);
     // The child session starts when the run does; the report lands when it ends.
     const startedAt = child?.time.created ?? message.time.created;
     const part = React.useMemo(() => toSubagentToolPart(message, run, startedAt), [message, run, startedAt]);
-    const toggle = React.useCallback(() => setExpanded((value) => !value), []);
+    const toggle = React.useCallback((toolId: string) => {
+        if (toolId === part.id) {
+            setExpanded((value) => !value);
+            return;
+        }
+        setExpandedTools((previous) => {
+            const next = new Set(previous);
+            if (next.has(toolId)) next.delete(toolId);
+            else next.add(toolId);
+            return next;
+        });
+    }, [part.id]);
     // Same rules as the prompt's own actions: none in peek, no fork in mini chat.
     const canCut = !isRunningSubagentRunMessage(message.id) && chatSurfaceMode !== 'peek';
 
     return (
         <NoticeRow>
             <div className="group/subagent-run">
-                <ToolPart part={part} isExpanded={expanded} onToggle={toggle} isMobile={isMobile} />
+                <ToolPart part={part} isExpanded={expanded} expandedTools={expandedTools} onToggle={toggle} isMobile={isMobile} />
                 {canCut ? <SubagentRunActions message={message} canFork={chatSurfaceMode !== 'mini-chat'} alwaysVisible={isMobile} /> : null}
             </div>
         </NoticeRow>

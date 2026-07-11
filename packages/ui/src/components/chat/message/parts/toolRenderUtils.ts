@@ -7,6 +7,16 @@ const STATIC_TOOL_NAMES = new Set<string>([OPENCODE_TOOLS.read, OPENCODE_TOOLS.s
 
 const STANDALONE_TOOL_NAMES = new Set<string>([OPENCODE_TOOLS.subagent]);
 
+export type ContextToolSummaryKind = 'read' | 'search' | 'list';
+
+export const getContextToolSummaryKind = (toolName: ToolName): ContextToolSummaryKind | null => {
+    const tool = typeof toolName === 'string' ? toolName.trim().toLowerCase() : '';
+    if (tool === 'read') return 'read';
+    if (tool === 'grep' || tool === 'glob' || tool === 'search') return 'search';
+    if (tool === 'list') return 'list';
+    return null;
+};
+
 export const isExpandableTool = (toolName: ToolName): boolean => {
     return !isStaticTool(toolName);
 };

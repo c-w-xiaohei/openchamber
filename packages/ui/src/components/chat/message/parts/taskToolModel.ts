@@ -13,6 +13,7 @@ export type TaskToolSummaryEntry = {
         status?: string;
         title?: string;
         input?: ToolInput;
+        error?: string;
     };
 };
 
@@ -94,7 +95,8 @@ export const normalizeTaskSummaryEntries = (value: unknown): TaskToolSummaryEntr
             tool?: unknown;
             title?: unknown;
             status?: unknown;
-            state?: { status?: unknown; title?: unknown; input?: unknown };
+            error?: unknown;
+            state?: { status?: unknown; title?: unknown; error?: unknown; input?: unknown };
         };
         normalized.push({
             id: typeof record.id === 'string' ? record.id : undefined,
@@ -106,6 +108,9 @@ export const normalizeTaskSummaryEntries = (value: unknown): TaskToolSummaryEntr
                 title: typeof record.state?.title === 'string'
                     ? record.state.title
                     : typeof record.title === 'string' ? record.title : undefined,
+                error: typeof record.state?.error === 'string'
+                    ? record.state.error
+                    : typeof record.error === 'string' ? record.error : undefined,
                 // SAFETY: the legacy <task_metadata> block is JSON, so an
                 // object value here is already a JSON record.
                 input: record.state?.input && typeof record.state.input === 'object'

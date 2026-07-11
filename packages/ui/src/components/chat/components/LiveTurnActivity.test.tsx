@@ -15,7 +15,7 @@ import { SyncProvider } from '@/sync/sync-context';
 import { useUIStore } from '@/stores/useUIStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { projectTurnRecords } from '../lib/turns/projectTurnRecords';
-import type { ChatMessageEntry, TurnChangedFile, TurnRecord } from '../lib/turns/types';
+import type { ChatMessageEntry, TurnChangedFile, TurnGroupingContext, TurnRecord } from '../lib/turns/types';
 import { LiveTurnActivity } from './LiveTurnActivity';
 
 plugin({
@@ -74,11 +74,14 @@ function turn(messages: ChatMessageEntry[]): TurnRecord {
     }, ...messages]).turns[0];
 }
 
-function Harness({ record, retired = false, changedFiles, isLatestTurn = true }: {
+function Harness({ record, retired = false, changedFiles, isLatestTurn = true, showReasoningTraces = true, sorted = false, groupExpanded = false }: {
     record: TurnRecord;
     retired?: boolean;
     changedFiles?: TurnChangedFile[];
     isLatestTurn?: boolean;
+    showReasoningTraces?: boolean;
+    sorted?: boolean;
+    groupExpanded?: boolean;
 }) {
     const [expanded, setExpanded] = React.useState(false);
     const renderMessage = (message: ChatMessageEntry) => (
@@ -89,12 +92,18 @@ function Harness({ record, retired = false, changedFiles, isLatestTurn = true }:
                 messageFinish={message.info.role === 'assistant' ? message.info.finish : undefined}
                 isMobile={false} copiedCode={null} onCopyCode={() => undefined} expandedTools={new Set()}
                 onToggleTool={() => undefined} onShowPopup={() => undefined} streamPhase="completed" allowAnimation={false}
-                hasTextContent={message.parts.some((part) => part.type === 'text')} showReasoningTraces
+                hasTextContent={message.parts.some((part) => part.type === 'text')} showReasoningTraces={showReasoningTraces}
                 turnGroupingContext={{
                     turnId: 'user', isFirstAssistantInTurn: message === record.assistantMessages[0],
                     isLastAssistantInTurn: message === record.assistantMessages.at(-1),
                     isLatestTurn, changedFiles, isWorking: false, hasTools: record.hasTools, hasReasoning: record.hasReasoning,
-                }}
+                    ...(sorted ? {
+                        activityParts: record.activityParts,
+                        activityGroupSegments: record.activitySegments,
+                        isGroupExpanded: groupExpanded,
+                        toggleGroup: () => undefined,
+                    } satisfies Pick<TurnGroupingContext, 'activityParts' | 'activityGroupSegments' | 'isGroupExpanded' | 'toggleGroup'> : {}),
+                } satisfies TurnGroupingContext}
             />
         </div>
     );
@@ -181,6 +190,37 @@ describe('live Activity with the real message body', () => {
         await act(async () => container.querySelector<HTMLButtonElement>('button[aria-controls]')?.click());
         expect(container.textContent).toContain('Private reasoning content');
         expect(container.textContent).toContain('Public answer');
+    });
+
+    test('sorted MessageBody drops all-hidden reasoning segments without an empty activity wrapper', async () => {
+        const thinking: Part = {
+            type: 'reasoning', id: 'thinking', messageID: 'final', sessionID: 'session', text: 'Private reasoning content', time: { start: 1, end: 2 },
+        };
+        const final = assistant('final', [thinking], 'tool-calls');
+        useUIStore.setState({ chatRenderMode: 'sorted' });
+        await act(async () => root.render(<Harness record={turn([final])} sorted showReasoningTraces={false} />));
+        expect(container.querySelector('[data-fixture-message="final"] .mb-3')).toBeNull();
+        expect(container.textContent).not.toContain('Activity');
+        await act(async () => root.render(<Harness record={turn([final])} sorted groupExpanded showReasoningTraces={false} />));
+        expect(container.querySelector('[data-fixture-message="final"] .mb-3')).toBeNull();
+        expect(container.textContent).not.toContain('Private reasoning content');
+    });
+
+    test('sorted MessageBody keeps visible tool segments separate across hidden reasoning', async () => {
+        const thinking: Part = {
+            type: 'reasoning', id: 'thinking', messageID: 'final', sessionID: 'session', text: 'Private reasoning content', time: { start: 1, end: 2 },
+        };
+        const secondRead: Part = {
+            ...readPart, id: 'read-after-thinking', callID: 'read-after-thinking', messageID: 'final',
+            state: { ...readPart.state, input: { filePath: '/project/after.ts' } },
+        };
+        const final = assistant('final', [{ ...readPart, messageID: 'final' }, thinking, secondRead], 'tool-calls');
+        useUIStore.setState({ chatRenderMode: 'sorted' });
+        await act(async () => root.render(<Harness record={turn([final])} sorted showReasoningTraces={false} />));
+        const activity = container.querySelector('[data-fixture-message="final"] .mb-3');
+        expect(activity).not.toBeNull();
+        expect(activity?.querySelectorAll('.oc-static-tool-row')).toHaveLength(2);
+        expect(activity?.textContent).not.toContain('Private reasoning content');
     });
 
     test('an interrupted turn folds all prose without fabricating a final answer', async () => {
