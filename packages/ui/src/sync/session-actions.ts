@@ -891,6 +891,7 @@ export async function createSession(
   parentID?: string | null,
   metadata?: Record<string, unknown>,
   selectionTransition?: "submitted-draft",
+  shouldSelect?: () => boolean,
 ): Promise<Session | null> {
   const runtimeKey = getRuntimeKey()
   try {
@@ -923,7 +924,10 @@ export async function createSession(
       }
       getImperativeSessionMessageLoader()?.initializeCreatedSession({ directory: sessionDirectory, sessionID: session.id })
     }
-    useSessionUIStore.getState().setCurrentSession(session.id, sessionDirectory, selectionTransition)
+    const sessionUI = useSessionUIStore.getState()
+    if (!shouldSelect || shouldSelect()) {
+      sessionUI.setCurrentSession(session.id, sessionDirectory, selectionTransition)
+    }
     useSessionUIStore.getState().markSessionAsOpenChamberCreated(session.id)
     useGlobalSessionsStore.getState().upsertSession(session)
     return session

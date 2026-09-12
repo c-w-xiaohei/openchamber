@@ -281,6 +281,7 @@ type SendMessageOptions = {
   /** Immutable copy of the new-session draft at submit time; used instead of the live draft. */
   draftSnapshot?: NewSessionDraftState
   delivery?: 'steer'
+  onSessionMaterialized?: (sessionId: string, directory: string | null) => void
 }
 
 type AssistantMessageSessionExecution = {
@@ -675,6 +676,20 @@ type MaterializedDraftSession = {
   syntheticParts?: SyntheticContextPart[]
 }
 
+const sameSubmittedDraftOwner = (current: NewSessionDraftState, submitted: NewSessionDraftState): boolean => (
+  current.open
+  && current.draftId === submitted.draftId
+  && current.target === submitted.target
+  && current.selectedProjectId === submitted.selectedProjectId
+  && normalizePath(current.directoryOverride) === normalizePath(submitted.directoryOverride)
+  && current.pendingWorktreeRequestId === submitted.pendingWorktreeRequestId
+  && normalizePath(current.bootstrapPendingDirectory) === normalizePath(submitted.bootstrapPendingDirectory)
+  && current.preserveDirectoryOverride === submitted.preserveDirectoryOverride
+  && current.parentID === submitted.parentID
+  && current.title === submitted.title
+  && current.targetFolderId === submitted.targetFolderId
+)
+
 const resolveProjectRefForWorktreeDirectory = (directory: string | null, projectId?: string | null): { id: string; path: string } | null => {
   const projectsState = useProjectsStore.getState()
   if (projectId) {
@@ -715,6 +730,7 @@ const resolveActiveProjectDirectory = (draft: NewSessionDraftState): string | nu
 const resolveCreatableDraftDirectory = async (
   draft: NewSessionDraftState,
   requestedDirectory: string | null | undefined,
+  expectedRuntimeKey?: string,
 ): Promise<{ status: "ok"; directory: string | null | undefined } | { status: "aborted" }> => {
   const directory = requestedDirectory ?? opencodeClient.getDirectory() ?? null
   const isRecoverableDraftDirectory =
@@ -736,6 +752,13 @@ const resolveCreatableDraftDirectory = async (
   const runtimeKey = getRuntimeKey()
   const draftDirectory = draft.directoryOverride
   const availability = await opencodeClient.getDirectoryAvailability(directory)
+  if (expectedRuntimeKey) {
+    if (getRuntimeKey() !== expectedRuntimeKey) return { status: "aborted" }
+    return {
+      status: "ok",
+      directory: availability === "missing" ? activeProjectDirectory : directory,
+    }
+  }
   const currentDraft = useSessionUIStore.getState().newSessionDraft
   const currentDirectory = normalizePath(currentDraft.directoryOverride)
   const capturedDirectory = normalizePath(draftDirectory)
@@ -796,14 +819,18 @@ const createSessionWithDraftLifecycle = async (
   parentID?: string | null,
   metadata?: Record<string, unknown>,
   selectionTransition?: "submitted-draft",
+  draftOverride?: NewSessionDraftState,
+  expectedRuntimeKey?: string,
 ): Promise<Session | null> => {
   const store = useSessionUIStore.getState()
-  const draft = store.newSessionDraft
+  const draft = draftOverride ?? store.newSessionDraft
   const targetFolderId = draft.targetFolderId
 
   try {
-    const resolved = await resolveCreatableDraftDirectory(draft, directoryOverride)
+    if (expectedRuntimeKey && getRuntimeKey() !== expectedRuntimeKey) return null
+    const resolved = await resolveCreatableDraftDirectory(draft, directoryOverride, expectedRuntimeKey)
     if (resolved.status === "aborted") return null
+    if (expectedRuntimeKey && getRuntimeKey() !== expectedRuntimeKey) return null
     const directory = resolved.directory
     const session = await createSessionAction(
       title,
@@ -811,10 +838,11 @@ const createSessionWithDraftLifecycle = async (
       parentID ?? null,
       metadata,
       selectionTransition,
+      draftOverride
+        ? () => sameSubmittedDraftOwner(useSessionUIStore.getState().newSessionDraft, draft)
+        : undefined,
     )
     if (!session) return null
-
-    useSessionUIStore.getState().closeNewSessionDraft()
 
     if (targetFolderId) {
       const currentStore = useSessionUIStore.getState()
@@ -860,9 +888,10 @@ export async function materializeOpenDraftSession(selection: {
   modelID: string
   agent?: string
   variant?: string
-}, draftOverride?: NewSessionDraftState): Promise<MaterializedDraftSession | null> {
+}, draftOverride?: NewSessionDraftState, expectedRuntimeKey?: string): Promise<MaterializedDraftSession | null> {
+  if (expectedRuntimeKey && getRuntimeKey() !== expectedRuntimeKey) throw new Error("runtime changed")
   const store = useSessionUIStore.getState()
-  const draft = draftOverride ?? store.newSessionDraft
+  let draft = draftOverride ?? store.newSessionDraft
   if (!draft?.open) return null
   const draftPermissionAutoAcceptEnabled = draft.permissionAutoAcceptEnabled === true
 
@@ -874,12 +903,20 @@ export async function materializeOpenDraftSession(selection: {
 
   if (draft.pendingWorktreeRequestId) {
     draftDirectoryOverride = await waitForPendingDraftWorktreeRequest(draft.pendingWorktreeRequestId)
-    store.resolvePendingDraftWorktreeTarget(draft.pendingWorktreeRequestId, draftDirectoryOverride)
+    if (expectedRuntimeKey && getRuntimeKey() !== expectedRuntimeKey) throw new Error("runtime changed")
+    if (sameSubmittedDraftOwner(useSessionUIStore.getState().newSessionDraft, draft)) {
+      store.resolvePendingDraftWorktreeTarget(draft.pendingWorktreeRequestId, draftDirectoryOverride)
+      draft = useSessionUIStore.getState().newSessionDraft
+    }
   }
 
   const isChatDraft = draft.target === "chat"
   if (isChatDraft) {
-    draftDirectoryOverride = await store.prepareChatDraftDirectory()
+    draftDirectoryOverride = draft.preparedChatDirectory ?? await createChatDirectory()
+    if (expectedRuntimeKey && getRuntimeKey() !== expectedRuntimeKey) {
+      await deleteChatDirectory(draftDirectoryOverride).catch(() => undefined)
+      throw new Error("runtime changed")
+    }
     if (!draftDirectoryOverride) throw new Error("Failed to prepare chat directory")
     const currentDraft = useSessionUIStore.getState().newSessionDraft
     if (currentDraft.draftId === draft.draftId) {
@@ -890,6 +927,7 @@ export async function materializeOpenDraftSession(selection: {
   }
 
   await waitForWorktreeBootstrapIfConfigured(draftDirectoryOverride, draftProjectId)
+  if (expectedRuntimeKey && getRuntimeKey() !== expectedRuntimeKey) throw new Error("runtime changed")
 
   const draftPins = draft.projectContextPins ?? { notes: [], plans: [] }
   const created = await createSessionWithDraftLifecycle(
@@ -900,6 +938,8 @@ export async function materializeOpenDraftSession(selection: {
       ? { openchamber: { project_context_pins: draftPins } }
       : undefined,
     "submitted-draft",
+    draft,
+    expectedRuntimeKey,
   )
   if (!created?.id) {
     if (isChatDraft && draftDirectoryOverride) {
@@ -1702,8 +1742,9 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         modelID,
         agent: trimmedAgent,
         variant,
-      }, options?.draftSnapshot)
+      }, options?.draftSnapshot, capturedRuntimeKey)
       if (!createdDraftSession) throw new Error("Failed to create session")
+      options?.onSessionMaterialized?.(createdDraftSession.sessionId, createdDraftSession.directory)
 
       const draftParts: Array<{ text: string; attachments?: AttachedFile[]; synthetic?: boolean; metadata?: ContextPartMetadata; systemContext?: 'session-knowledge' }> | undefined = createdDraftSession.syntheticParts?.length
         ? [...(additionalParts || []), ...createdDraftSession.syntheticParts]
@@ -1742,8 +1783,11 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         filename: a.filename,
       }))
 
+      if (getRuntimeKey() !== capturedRuntimeKey) throw new Error("Message was not sent because the runtime changed.")
       await applyArmedGoal(createdDraftSession.sessionId, createdDraftSession.directory)
+      if (getRuntimeKey() !== capturedRuntimeKey) throw new Error("Message was not sent because the runtime changed.")
       const messageRoute = await routeMessage({
+        runtimeKey: capturedRuntimeKey,
         sessionId: createdDraftSession.sessionId,
         directory: createdDraftSession.directory,
         content,

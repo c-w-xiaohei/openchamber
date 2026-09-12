@@ -47,6 +47,7 @@ export interface ComposerFooterProps {
     canSend: boolean;
     canAbort: boolean;
     hasContent: boolean;
+    isSubmitting: boolean;
     isExpandedInput: boolean;
     permissionAutoAcceptEnabled: boolean;
     isPermissionAutoAcceptInteractive: boolean;
@@ -92,6 +93,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
         canSend,
         canAbort,
         hasContent,
+        isSubmitting,
         isExpandedInput,
         permissionAutoAcceptEnabled,
         isPermissionAutoAcceptInteractive,
@@ -136,6 +138,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                         <div className="composer-mobile-actions flex items-center gap-x-2 pl-1">
                             {!isBtw ? <ComposerAttachmentControls
                                 isVSCode={isVSCode}
+                                disabled={isSubmitting}
                                 footerIconButtonClass={footerIconButtonClass}
                                 iconSizeClass={iconSizeClass}
                                 handlePickLocalFiles={onPickLocalFiles}
@@ -192,6 +195,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                                     canSend={canSend}
                                     canAbort={canAbort}
                                     hasContent={hasContent}
+                                    isSubmitting={isSubmitting}
                                     currentSessionId={currentSessionId}
                                     newSessionDraftOpen={newSessionDraftOpen}
                                     onPrimaryAction={onPrimaryAction}
@@ -207,6 +211,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                     <div className={cn("flex items-center flex-shrink-0", footerGapClass)}>
                         {!isBtw ? <ComposerAttachmentControls
                             isVSCode={isVSCode}
+                            disabled={isSubmitting}
                             footerIconButtonClass={footerIconButtonClass}
                             iconSizeClass={iconSizeClass}
                             handlePickLocalFiles={onPickLocalFiles}
@@ -261,6 +266,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                             canSend={canSend}
                             canAbort={canAbort}
                             hasContent={hasContent}
+                            isSubmitting={isSubmitting}
                             currentSessionId={currentSessionId}
                             newSessionDraftOpen={newSessionDraftOpen}
                             onPrimaryAction={onPrimaryAction}

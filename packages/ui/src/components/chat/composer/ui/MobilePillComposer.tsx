@@ -29,6 +29,7 @@ export interface MobilePillComposerProps {
     hasContent: boolean;
     isVSCode: boolean;
     canAbort: boolean;
+    isSubmitting: boolean;
     footerIconButtonClass: string;
     iconSizeClass: string;
     sendIconSizeClass: string;
@@ -63,6 +64,7 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
         hasContent,
         isVSCode,
         canAbort,
+        isSubmitting,
         footerIconButtonClass,
         iconSizeClass,
         sendIconSizeClass,
@@ -109,6 +111,7 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
             <div className="flex h-12 min-w-0 items-center gap-x-0.5 pl-1 pr-1">
                 <ComposerAttachmentControls
                     isVSCode={isVSCode}
+                    disabled={isSubmitting}
                     footerIconButtonClass={footerIconButtonClass}
                     iconSizeClass={iconSizeClass}
                     handlePickLocalFiles={onPickLocalFiles}
@@ -151,7 +154,17 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
                     while a turn is running the stop button takes the mic's
                     end slot and the mic shifts one slot left. Instant swap —
                     no shape animation (WKWebView). */}
-                {canAbort ? (
+                {isSubmitting ? (
+                    <button
+                        type="button"
+                        disabled
+                        aria-busy="true"
+                        aria-label={t('chat.chatInput.actions.sendMessageAria')}
+                        className={cn(footerIconButtonClass, 'text-primary')}
+                    >
+                        <Icon name="loader-4" className={cn(sendIconSizeClass, 'animate-spin')} />
+                    </button>
+                ) : canAbort ? (
                     <button
                         type="button"
                         className={cn(footerIconButtonClass, 'text-[var(--status-error)] hover:text-[var(--status-error)]')}
