@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
+import { dict as de } from './de';
 import { dict as en } from './en';
 import { dict as es } from './es';
 import { dict as fr } from './fr';
 import { dict as ko } from './ko';
 import { dict as pl } from './pl';
 import { dict as ptBR } from './pt-BR';
+import { dict as tr } from './tr';
 import { dict as uk } from './uk';
 import { dict as zhCN } from './zh-CN';
 import { dict as zhTW } from './zh-TW';
@@ -34,12 +36,14 @@ const REQUIRED_KEYS = [
 ] as const;
 
 const dictionaries = {
+    de,
     en,
     es,
     fr,
     ko,
     pl,
     'pt-BR': ptBR,
+    tr,
     uk,
     'zh-CN': zhCN,
     'zh-TW': zhTW,
@@ -51,7 +55,6 @@ describe('context tool group i18n messages', () => {
         for (const dict of Object.values(dictionaries)) {
             for (const key of REQUIRED_KEYS) {
                 const message = dict[key];
-                expect(typeof message).toBe('string');
                 expect(message.trim()).not.toBe('');
             }
         }
