@@ -2596,6 +2596,81 @@ describe("question dismissal clears pending state without the SSE echo (issues #
     questionRejectError = null
   })
 
+  test("rejects a reply after runtime switches during the connection wait without clearing either runtime's question state", async () => {
+    const question = buildQuestion("q-1", "session-a")
+    const store = createStore({}, {
+      session: [sessionFixture("session-a")],
+      question: { "session-a": [question] },
+    })
+    const { beginQuestionSubmission, getQuestionSubmission, resetQuestionSubmissionStateForTests } = await import("./question-submission-state")
+    const { switchRuntimeEndpoint } = await import("../lib/runtime-switch")
+    resetQuestionSubmissionStateForTests()
+    switchRuntimeEndpoint({ apiBaseUrl: "http://question-runtime-a.test", runtimeKey: "question-runtime-a" })
+    const oldIdentity = { runtimeKey: "question-runtime-a", sessionID: "session-a", requestID: "q-1" }
+    const newIdentity = { runtimeKey: "question-runtime-b", sessionID: "session-a", requestID: "q-1" }
+    beginQuestionSubmission(oldIdentity, [["old answer"]])
+    beginQuestionSubmission(newIdentity, [["new answer"]])
+
+    const { setActionRefs, respondToQuestion } = await import("./session-actions")
+    setActionRefs(actionsSdk(), createChildStores([["/test/project", store]]), () => "/test/project")
+
+    const reply = respondToQuestion("session-a", "q-1", [["old answer"]])
+    switchRuntimeEndpoint({ apiBaseUrl: "http://question-runtime-b.test", runtimeKey: "question-runtime-b" })
+
+    await expect(reply).rejects.toThrow("runtime changed")
+    expect(replyCalls).toEqual([])
+    expect(store.getState().question["session-a"]?.map((item) => item.id)).toEqual(["q-1"])
+    expect(getQuestionSubmission(oldIdentity)).toEqual({ answers: [["old answer"]], customAnswers: {}, pending: false })
+    expect(getQuestionSubmission(newIdentity)).toEqual({ answers: [["new answer"]], customAnswers: {}, pending: true })
+  })
+
+  test("rejects a dismissal after runtime switches during the connection wait without clearing either runtime's question state", async () => {
+    const question = buildQuestion("q-1", "session-a")
+    const store = createStore({}, {
+      session: [sessionFixture("session-a")],
+      question: { "session-a": [question] },
+    })
+    const { beginQuestionSubmission, getQuestionSubmission, resetQuestionSubmissionStateForTests } = await import("./question-submission-state")
+    const { switchRuntimeEndpoint } = await import("../lib/runtime-switch")
+    resetQuestionSubmissionStateForTests()
+    switchRuntimeEndpoint({ apiBaseUrl: "http://question-reject-runtime-a.test", runtimeKey: "question-reject-runtime-a" })
+    const oldIdentity = { runtimeKey: "question-reject-runtime-a", sessionID: "session-a", requestID: "q-1" }
+    const newIdentity = { runtimeKey: "question-reject-runtime-b", sessionID: "session-a", requestID: "q-1" }
+    beginQuestionSubmission(oldIdentity, [])
+    beginQuestionSubmission(newIdentity, [])
+
+    const { setActionRefs, rejectQuestion } = await import("./session-actions")
+    setActionRefs(actionsSdk(), createChildStores([["/test/project", store]]), () => "/test/project")
+
+    const rejection = rejectQuestion("session-a", "q-1")
+    switchRuntimeEndpoint({ apiBaseUrl: "http://question-reject-runtime-b.test", runtimeKey: "question-reject-runtime-b" })
+
+    await expect(rejection).rejects.toThrow("runtime changed")
+    expect(replyCalls).toEqual([])
+    expect(store.getState().question["session-a"]?.map((item) => item.id)).toEqual(["q-1"])
+    expect(getQuestionSubmission(oldIdentity)).toEqual({ answers: [], customAnswers: {}, pending: false })
+    expect(getQuestionSubmission(newIdentity)).toEqual({ answers: [], customAnswers: {}, pending: true })
+  })
+
+  test("clears the matching submitted-answer shadow when the reply is acknowledged", async () => {
+    const question = buildQuestion("q-1", "session-a")
+    const store = createStore({}, {
+      session: [sessionFixture("session-a")],
+      question: { "session-a": [question] },
+    })
+    const { beginQuestionSubmission, getQuestionSubmission, resetQuestionSubmissionStateForTests } = await import("./question-submission-state")
+    resetQuestionSubmissionStateForTests()
+    const identity = { runtimeKey, sessionID: "session-a", requestID: "q-1" }
+    beginQuestionSubmission(identity, [["Yes"]])
+
+    const { setActionRefs, respondToQuestion } = await import("./session-actions")
+    setActionRefs(actionsSdk(), createChildStores([["/test/project", store]]), () => "/test/project")
+
+    await respondToQuestion("session-a", "q-1", [["Yes"]])
+
+    expect(getQuestionSubmission(identity)).toBeNull()
+  })
+
   test("rejectQuestion clears the question from the child store on success", async () => {
     const question = buildQuestion("q-1", "session-a")
     const store = createStore({}, {

@@ -198,6 +198,19 @@ VS Code does not run the server permission-auto-accept runtime. The extension ho
 
 ### Mutation responsibility
 
+### Question submission shadow
+
+`question-submission-state.ts` owns the temporary submitted-answer shadow for a
+QuestionCard. It is in-memory only and keyed by runtime, session, and request.
+The shadow preserves submitted selections/custom answers and pending state across
+card remounts, preventing duplicate replies. It is not a second question list:
+child-store `question` records remain authoritative. A successful reply/reject,
+accepted not-found cleanup, or matching `question.replied`/`question.rejected`
+event clears only its exact shadow owner. A definite HTTP failure releases
+pending while retaining answers for retry. While released, QuestionCard edits
+replace that exact shadow's answers so a remount restores the retry payload;
+pending shadows remain immutable.
+
 `useGlobalSessionsStore` is kept correct by:
 
 1. shared global fetch/reconciliation via `loadSessions()` / `refreshGlobalSessions()`

@@ -45,6 +45,7 @@ import { messagesBefore, messagesFrom } from "./message-ordering"
 import { deleteChatDirectory } from "@/lib/chatDirectories"
 import { createChatDraftIdentity } from "@/lib/chatDraftPersistence"
 import { cancelSessionTitleGeneration } from "./session-title-generation"
+import { clearQuestionSubmission, releaseQuestionSubmission } from "./question-submission-state"
 
 const MESSAGE_REFETCH_LIMIT = 100
 const SEND_CONFIRMATION_REFETCH_LIMIT = 30
@@ -2096,12 +2097,20 @@ export async function dismissOpenPermissionsForSession(sessionId: string): Promi
 // Questions
 // ---------------------------------------------------------------------------
 
+function throwIfQuestionRuntimeChanged(runtimeKey: string, sessionId: string, requestId: string): void {
+  if (!isStaleRuntime(runtimeKey)) return
+  releaseQuestionSubmission({ runtimeKey, sessionID: sessionId, requestID: requestId })
+  throw new Error("runtime changed")
+}
+
 export async function respondToQuestion(
   sessionId: string,
   requestId: string,
   answers: string[] | string[][],
 ): Promise<void> {
+  const runtimeKey = getRuntimeKey()
   await waitForConnectionOrThrow()
+  throwIfQuestionRuntimeChanged(runtimeKey, sessionId, requestId)
   const directory = resolveDirectoryForBlockingRequest("question", sessionId, requestId)
     || getSessionDirectory(sessionId)
     || dir()
@@ -2116,6 +2125,7 @@ export async function respondToQuestion(
       answers: normalizedAnswers,
       ...(directory ? { directory } : {}),
     })
+    throwIfQuestionRuntimeChanged(runtimeKey, sessionId, requestId)
     if (assertSdkData(result, "question.reply") !== true) {
       throw new Error("Question reply failed")
     }
@@ -2127,10 +2137,13 @@ export async function respondToQuestion(
     // (issues #2911, #2448). The later SSE event is a no-op (the reducer only
     // removes when present).
     removeQuestionRequestFromChildStores(sessionId, requestId)
+    clearQuestionSubmission({ runtimeKey, sessionID: sessionId, requestID: requestId })
   } catch (error) {
+    throwIfQuestionRuntimeChanged(runtimeKey, sessionId, requestId)
     if (isQuestionRequestNotFoundError(error)) {
       removeQuestionRequestFromChildStores(sessionId, requestId)
       recoverStaleBlockingRequest(sessionId)
+      clearQuestionSubmission({ runtimeKey, sessionID: sessionId, requestID: requestId })
     }
     throw error
   }
@@ -2140,7 +2153,9 @@ export async function rejectQuestion(
   sessionId: string,
   requestId: string,
 ): Promise<void> {
+  const runtimeKey = getRuntimeKey()
   await waitForConnectionOrThrow()
+  throwIfQuestionRuntimeChanged(runtimeKey, sessionId, requestId)
   const directory = resolveDirectoryForBlockingRequest("question", sessionId, requestId)
     || getSessionDirectory(sessionId)
     || dir()
@@ -2149,6 +2164,7 @@ export async function rejectQuestion(
       requestID: requestId,
       ...(directory ? { directory } : {}),
     })
+    throwIfQuestionRuntimeChanged(runtimeKey, sessionId, requestId)
     if (assertSdkData(result, "question.reject") !== true) {
       throw new Error("Question rejection failed")
     }
@@ -2157,10 +2173,13 @@ export async function rejectQuestion(
     // respondToQuestion for the lost-SSE-event rationale — issues #2911,
     // #2448). The later SSE `question.rejected` event is a no-op.
     removeQuestionRequestFromChildStores(sessionId, requestId)
+    clearQuestionSubmission({ runtimeKey, sessionID: sessionId, requestID: requestId })
   } catch (error) {
+    throwIfQuestionRuntimeChanged(runtimeKey, sessionId, requestId)
     if (isQuestionRequestNotFoundError(error)) {
       removeQuestionRequestFromChildStores(sessionId, requestId)
       recoverStaleBlockingRequest(sessionId)
+      clearQuestionSubmission({ runtimeKey, sessionID: sessionId, requestID: requestId })
     }
     throw error
   }
