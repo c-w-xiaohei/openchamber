@@ -10,7 +10,7 @@ import { I18nProvider } from '@/lib/i18n';
 
 import { MobilePillComposer } from './MobilePillComposer';
 
-const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: boolean; canAbort?: boolean; isSubmitting?: boolean }) => {
+const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: boolean; canAbort?: boolean; isSubmitting?: boolean; showAbortHint?: boolean }) => {
     const win = new Window({ url: 'http://localhost' });
     const values = { window: win, document: win.document, navigator: win.navigator, localStorage: win.localStorage, IS_REACT_ACT_ENVIRONMENT: true };
     const previous = new Map(Object.keys(values).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -33,6 +33,7 @@ const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: b
                 isVSCode={false}
                 canAbort={options.canAbort ?? false}
                 isSubmitting={options.isSubmitting ?? false}
+                showAbortHint={options.showAbortHint}
                 footerIconButtonClass="icon-button"
                 iconSizeClass="icon-size"
                 sendIconSizeClass="send-icon-size"
@@ -101,6 +102,17 @@ describe('MobilePillComposer', () => {
 
         expect(markup).toContain('aria-label="Add attachment"');
         expect(markup).toContain('disabled="" title="Add attachment" aria-label="Add attachment"');
+        expect(markup).toContain('aria-busy="true"');
+        expect(markup).toContain('href="#oc-loader-4"');
+        expect(markup).toContain('animate-spin');
+        expect(markup).not.toContain('disabled:opacity-50');
+    });
+
+    test('shows the second-Escape hint beside a running session stop action', async () => {
+        const markup = await renderPill({ hasContent: false, newSessionDraftOpen: false, canAbort: true, showAbortHint: true });
+
+        expect(markup).toContain('Press Esc again to stop');
+        expect(markup).toContain('aria-label="Stop generating"');
     });
     test('uses the inline send action for content in a new-session draft', async () => {
         const markup = await renderPill({ hasContent: true, newSessionDraftOpen: true });

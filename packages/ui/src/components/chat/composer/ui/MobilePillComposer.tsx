@@ -30,6 +30,7 @@ export interface MobilePillComposerProps {
     isVSCode: boolean;
     canAbort: boolean;
     isSubmitting: boolean;
+    showAbortHint?: boolean;
     footerIconButtonClass: string;
     iconSizeClass: string;
     sendIconSizeClass: string;
@@ -65,6 +66,7 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
         isVSCode,
         canAbort,
         isSubmitting,
+        showAbortHint,
         footerIconButtonClass,
         iconSizeClass,
         sendIconSizeClass,
@@ -154,38 +156,47 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
                     while a turn is running the stop button takes the mic's
                     end slot and the mic shifts one slot left. Instant swap —
                     no shape animation (WKWebView). */}
-                {isSubmitting ? (
-                    <button
-                        type="button"
-                        disabled
-                        aria-busy="true"
-                        aria-label={t('chat.chatInput.actions.sendMessageAria')}
-                        className={cn(footerIconButtonClass, 'text-primary')}
-                    >
-                        <Icon name="loader-4" className={cn(sendIconSizeClass, 'animate-spin')} />
-                    </button>
-                ) : canAbort ? (
-                    <button
-                        type="button"
-                        className={cn(footerIconButtonClass, 'text-[var(--status-error)] hover:text-[var(--status-error)]')}
-                        // The pill shows only while the keyboard is down — the
-                        // tap must abort in place, never focus/expand the
-                        // composer or raise the keyboard.
-                        onMouseDown={(event) => event.preventDefault()}
-                        onPointerDownCapture={(event) => {
-                            if (event.pointerType === 'touch') {
-                                event.preventDefault();
-                            }
-                        }}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onAbort();
-                        }}
-                        title={t('chat.chatInput.actions.stopGeneratingAria')}
-                        aria-label={t('chat.chatInput.actions.stopGeneratingAria')}
-                    >
-                        <StopIcon className={cn(stopIconSizeClass)} />
-                    </button>
+                {isSubmitting || canAbort ? (
+                    <div className="relative">
+                        {showAbortHint ? (
+                            <span className="pointer-events-none absolute bottom-full right-0 z-30 mb-1 whitespace-nowrap typography-micro text-muted-foreground">
+                                {t('chat.chatInput.actions.abortConfirmationHint')}
+                            </span>
+                        ) : null}
+                        {isSubmitting ? (
+                            <button
+                                type="button"
+                                disabled
+                                aria-busy="true"
+                                aria-label={t('chat.chatInput.actions.sendMessageAria')}
+                                className={cn(footerIconButtonClass, 'text-primary')}
+                            >
+                                <Icon name="loader-4" className={cn(sendIconSizeClass, 'animate-spin')} />
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                className={cn(footerIconButtonClass, 'text-[var(--status-error)] hover:text-[var(--status-error)]')}
+                                // The pill shows only while the keyboard is down — the
+                                // tap must abort in place, never focus/expand the
+                                // composer or raise the keyboard.
+                                onMouseDown={(event) => event.preventDefault()}
+                                onPointerDownCapture={(event) => {
+                                    if (event.pointerType === 'touch') {
+                                        event.preventDefault();
+                                    }
+                                }}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onAbort();
+                                }}
+                                title={t('chat.chatInput.actions.stopGeneratingAria')}
+                                aria-label={t('chat.chatInput.actions.stopGeneratingAria')}
+                            >
+                                <StopIcon className={cn(stopIconSizeClass)} />
+                            </button>
+                        )}
+                    </div>
                 ) : canPrimaryAction ? (
                     <Button
                         type="button"

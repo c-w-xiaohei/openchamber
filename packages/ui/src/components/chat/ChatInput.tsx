@@ -493,7 +493,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const setDraftPermissionAutoAcceptEnabled = useSessionUIStore((s) => s.setDraftPermissionAutoAcceptEnabled);
     const prepareChatDraftDirectory = useSessionUIStore((s) => s.prepareChatDraftDirectory);
     const abortPromptSessionId = useSessionUIStore((s) => s.abortPromptSessionId);
-    const clearAbortPrompt = useSessionUIStore((s) => s.clearAbortPrompt);
     const attachedFiles = useInputStore((s) => isBtwActive ? EMPTY_ATTACHMENTS : s.attachedFiles);
     const addAttachedFile = useInputStore((s) => s.addAttachedFile);
     const clearAttachedFiles = useInputStore((s) => s.clearAttachedFiles);
@@ -518,7 +517,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         void prepareChatDraftDirectory();
     }, [message, newSessionDraft.target, newSessionDraftOpen, prepareChatDraftDirectory]);
     const consumePendingSyntheticParts = useInputStore((s) => s.consumePendingSyntheticParts);
-    const acknowledgeSessionAbort = useSessionUIStore((s) => s.acknowledgeSessionAbort);
+    const clearAbortPrompt = useSessionUIStore((s) => s.clearAbortPrompt);
     const abortCurrentOperation = React.useCallback(
         (sessionIdOverride?: string) => sessionActions.abortCurrentOperation(sessionIdOverride ?? currentSessionId ?? ''),
         [currentSessionId],
@@ -932,8 +931,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
         return { status: 'ready', prepared };
     }, [resolveInlineFileMention]);
-    const prevWasAbortedRef = React.useRef(false);
-
     // Issue linking state
     const [issuePickerOpen, setIssuePickerOpen] = React.useState(false);
     const [prPickerOpen, setPrPickerOpen] = React.useState(false);
@@ -2945,12 +2942,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }, [isMobile]);
 
     React.useEffect(() => {
-        if (abortPromptSessionId && abortPromptSessionId !== currentSessionId) {
-            clearAbortPrompt();
-        }
-    }, [abortPromptSessionId, currentSessionId, clearAbortPrompt]);
-
-    React.useEffect(() => {
         canAcceptDropRef.current = Boolean(currentSessionId || newSessionDraftOpen);
     }, [currentSessionId, newSessionDraftOpen]);
 
@@ -3441,15 +3432,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         handlePermissionAutoAcceptToggle();
     });
 
-    // Acknowledging the abort record is what lets the working chip resume for
-    // the next run; the old "Aborted" banner that used to accompany it is gone.
-    React.useEffect(() => {
-        const pendingAbort = Boolean(abortPromptSessionId) && abortPromptSessionId === currentSessionId;
-        if (!prevWasAbortedRef.current && pendingAbort && currentSessionId) {
-            acknowledgeSessionAbort(currentSessionId);
-        }
-        prevWasAbortedRef.current = pendingAbort;
-    }, [abortPromptSessionId, acknowledgeSessionAbort, currentSessionId]);
+    const showAbortHint = Boolean(
+        abortPromptSessionId
+        && abortPromptSessionId === currentSessionId
+        && sessionPhase !== 'idle',
+    );
 
     return (
         <>
@@ -3547,6 +3534,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         isVSCode={isVSCode}
                         canAbort={canAbort}
                         isSubmitting={isSubmitting}
+                        showAbortHint={showAbortHint}
                         footerIconButtonClass={footerIconButtonClass}
                         iconSizeClass={iconSizeClass}
                         sendIconSizeClass={sendIconSizeClass}
@@ -3736,6 +3724,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         canAbort={canAbort}
                         hasContent={Boolean(hasContent)}
                         isSubmitting={isSubmitting}
+                        showAbortHint={showAbortHint}
                         isExpandedInput={isExpandedInput}
                         permissionAutoAcceptEnabled={permissionAutoAcceptEnabled}
                         isPermissionAutoAcceptInteractive={isPermissionAutoAcceptInteractive}
