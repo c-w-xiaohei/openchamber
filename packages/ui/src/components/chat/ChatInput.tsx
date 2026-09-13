@@ -3,7 +3,7 @@ import { ComposerDictation } from '@/components/dictation/ComposerDictation';
 // sessionStore removed — currentSessionId comes from useSessionUIStore
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { isServerOwnedMessageQueue, createMessageQueueTarget, getMessageQueueKey, useMessageQueueStore, type QueuedContextPart, type QueuedMessage } from '@/stores/messageQueueStore';
+import { acknowledgeAcceptedQueuedSend, isServerOwnedMessageQueue, createMessageQueueTarget, getMessageQueueKey, shouldReleaseQueuedSendAfterFailure, useMessageQueueStore, type QueuedContextPart, type QueuedMessage } from '@/stores/messageQueueStore';
 import { useAutoReviewStore } from '@/stores/useAutoReviewStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useSelectionStore } from '@/sync/selection-store';
@@ -960,7 +960,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         )
     );
     const addToQueue = useMessageQueueStore((state) => state.addToQueue);
-    const takeForSend = useMessageQueueStore((state) => state.takeForSend);
+    const beginManualSend = useMessageQueueStore((state) => state.beginManualSend);
+    const startManualSend = useMessageQueueStore((state) => state.startManualSend);
+    const ackManualSend = useMessageQueueStore((state) => state.ackManualSend);
+    const failManualSend = useMessageQueueStore((state) => state.failManualSend);
 
     // Inline comment drafts
     const inlineDraftSessionKey = isBtwActive ? btwComposerSessionId ?? '' : currentSessionId ?? (newSessionDraftOpen ? 'draft' : '');
@@ -1492,12 +1495,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             }
         };
 
-        // The projection knows the captured send configuration; the full
-        // messages are taken from the queue only once nothing below can still
-        // bail out, so an early return leaves the queue untouched.
+        // Read the owner immediately before preparing the send. An automatic
+        // server delivery can claim the head after render; that entry must not
+        // affect this batch's configuration, files, or outgoing payload.
+        const sendableQueuedMessages = capturedTarget
+            ? useMessageQueueStore.getState().getSendableQueue(capturedTarget)
+            : EMPTY_QUEUE;
         const queuedProjection = queuedMessageId
-            ? queuedMessages.filter((message) => message.id === queuedMessageId)
-            : queuedMessages;
+            ? sendableQueuedMessages.filter((message) => message.id === queuedMessageId)
+            : sendableQueuedMessages;
+        if (queuedOnly && queuedProjection.length === 0) return;
         const capturedSendConfig = queuedOnly ? queuedProjection[0]?.sendConfig : undefined;
         const providerIdToSend = capturedSendConfig?.providerID ?? (isBtwActive ? effectiveBtwSelection.model?.providerId : currentProviderId);
         const modelIdToSend = capturedSendConfig?.modelID ?? (isBtwActive ? effectiveBtwSelection.model?.modelId : currentModelId);
@@ -1670,25 +1677,41 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
         const preparedDocumentMentions = documentMentions.prepared;
 
-        // The composer delivers these itself, so they leave the queue now — the
-        // queue's own delivery (server-side, or the auto-send hook in VS Code)
-        // skips anything already in flight, and a message already being
-        // delivered stays out of this send so it cannot go out twice.
-        let queuedMessagesToSend: QueuedMessage[] = [];
-        if (capturedTarget && hasQueuedMessages && !commandPlan) {
+        // Claim queued messages without removing them. Their queue owner keeps
+        // the full payload until this OpenCode send acknowledges or fails.
+        let queuedSendClaim: { token: string; items: QueuedMessage[] } | null = null;
+        if (capturedTarget && queuedProjection.length > 0 && !commandPlan) {
             try {
-                queuedMessagesToSend = await takeForSend(capturedTarget, queuedMessageId);
+                const messageIds = queuedProjection.map((message) => message.id);
+                queuedSendClaim = await beginManualSend(capturedTarget, messageIds);
             } catch (error) {
-                console.warn('[queue] failed to take queued messages for sending:', error);
+                console.warn('[queue] failed to claim queued messages for sending:', error);
                 toast.error(t('chat.queuedMessage.toast.takeFailed'));
                 finishSubmission();
                 return;
             }
-            if (queuedOnly && queuedMessagesToSend.length === 0) {
+            if (queuedOnly && queuedSendClaim.items.length === 0) {
                 finishSubmission();
                 return;
             }
         }
+        const queuedMessagesToSend = queuedSendClaim?.items ?? [];
+        const queuedMessageIds = queuedMessagesToSend.map((message) => message.id);
+        if (capturedTarget && queuedSendClaim?.token && queuedMessageIds.length > 0) {
+            const { token } = queuedSendClaim;
+            sendMessageOptions = {
+                ...sendMessageOptions,
+                onMessageID: (messageID) => startManualSend(capturedTarget, queuedMessageIds, token, messageID),
+                sendRequest: isServerOwnedMessageQueue()
+                    ? (request) => useMessageQueueStore.getState().dispatchManualSend(capturedTarget, queuedMessageIds, token, request)
+                    : undefined,
+            };
+        }
+        const settleQueuedSend = async (accepted: boolean) => {
+            if (!capturedTarget || !queuedSendClaim?.token || queuedMessageIds.length === 0) return;
+            if (accepted) await ackManualSend(capturedTarget, queuedMessageIds, queuedSendClaim.token);
+            else await failManualSend(capturedTarget, queuedMessageIds, queuedSendClaim.token);
+        };
 
         const historySubmissions = buildChatInputHistorySubmissions({
             inputMode,
@@ -2002,6 +2025,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             setLinkedPr((current) => current === linkedPr ? null : current);
             setLinkedLinearIssue((current) => current === linkedLinearIssue ? null : current);
         }).catch((error: unknown) => {
+            if (error instanceof Error && shouldReleaseQueuedSendAfterFailure(error)) void settleQueuedSend(false);
             const rawMessage =
                 error instanceof Error
                     ? error.message

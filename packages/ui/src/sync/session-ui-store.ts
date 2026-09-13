@@ -145,6 +145,8 @@ export async function routeMessage(params: {
   files?: Array<{ type: "file"; mime: string; url: string; filename: string }>
   additionalParts?: Array<{ text: string; synthetic?: boolean; metadata?: ContextPartMetadata; files?: Array<{ type: "file"; mime: string; url: string; filename: string }>; systemContext?: 'session-knowledge' }>
   appendSubmissions?: () => void
+  onMessageID?: (messageID: string) => void | Promise<void>
+  sendRequest?: (request: Request) => Promise<Response>
   delivery?: 'steer'
 }): Promise<'command' | 'prompt' | 'shell'> {
   const requestDirectory = params.directory ?? undefined
@@ -197,6 +199,7 @@ export async function routeMessage(params: {
           directory: requestDirectory,
           files: params.files,
           appendSubmissions: params.appendSubmissions,
+          onMessageID: params.onMessageID,
           send: (messageID) => opencodeClient.sendCommand({
             runtimeKey: params.runtimeKey,
             id: params.sessionId,
@@ -208,6 +211,7 @@ export async function routeMessage(params: {
             variant: params.variant,
             files: params.files,
             messageId: messageID,
+            sendRequest: params.sendRequest,
             directory: requestDirectory,
           }).then(() => {}),
         })
@@ -243,6 +247,7 @@ export async function routeMessage(params: {
     directory: requestDirectory,
     files: params.files,
     appendSubmissions: params.appendSubmissions,
+    onMessageID: params.onMessageID,
     send: (messageID) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
       id: params.sessionId,
@@ -261,6 +266,7 @@ export async function routeMessage(params: {
       })),
       delivery: params.delivery,
       messageId: messageID,
+      sendRequest: params.sendRequest,
       directory: requestDirectory,
     }).then(() => {}),
   })
@@ -274,6 +280,8 @@ type CapturedSendTarget = {
 }
 
 type SendMessageOptions = {
+  onMessageID?: (messageID: string) => void | Promise<void>
+  sendRequest?: (request: Request) => Promise<Response>
   target?: CapturedSendTarget
   sessionId?: string
   directory?: string
@@ -1799,6 +1807,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         inputMode,
         files,
         appendSubmissions,
+        onMessageID: options?.onMessageID,
+        sendRequest: options?.sendRequest,
         delivery: options?.delivery,
         additionalParts: mergedAdditionalParts?.map((p) => ({
           text: p.text,
@@ -1920,6 +1930,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
       inputMode,
       files,
       appendSubmissions,
+      onMessageID: options?.onMessageID,
+      sendRequest: options?.sendRequest,
       delivery: options?.delivery,
       additionalParts: partsWithPinnedContext?.map((p) => ({
         text: p.text,

@@ -1120,6 +1120,49 @@ describe('routeMessage skill invocation', () => {
     expect(sendMessageCalls).toHaveLength(0);
   });
 
+  test('carries the claimed optimistic identity through the real SDK prompt and command requests', async () => {
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.sendCommand = originalSendCommand;
+    const sdkTransport = opencodeClient.getSdkClient().client;
+    const previousConfig = sdkTransport.getConfig();
+    sdkTransport.setConfig({ baseUrl: 'https://opencode.test' });
+    useSkillsStore.setState({ skills: [{ name: 'queue-skill', path: '/skills/queue-skill/SKILL.md', scope: 'user', source: 'opencode' }] });
+    try {
+      for (const content of ['queued batch', '/queue-skill argument']) {
+        let claimedID;
+        const requests = [];
+        const route = await routeMessage({
+          sessionId: 'session-queue', directory: '/skills/project', content,
+          providerID: 'provider-a', modelID: 'model-a',
+          onMessageID: async (messageID) => { claimedID = messageID; },
+          sendRequest: async (request) => {
+            requests.push({ url: request.url, method: request.method, body: await request.json() });
+            return new Response(null, { status: 204 });
+          },
+        });
+        expect(requests).toHaveLength(1);
+        expect(requests[0].body.messageID).toBe(claimedID);
+        expect(requests[0].method).toBe('POST');
+        expect(new URL(requests[0].url).searchParams.get('directory')).toBe('/skills/project');
+        expect(new URL(requests[0].url).pathname.endsWith(route === 'command' ? '/command' : '/prompt_async')).toBe(true);
+      }
+    } finally {
+      sdkTransport.setConfig(previousConfig);
+    }
+  });
+
+  test('does not insert or dispatch a queued prompt when binding its identity is rejected', async () => {
+    let inserts = 0;
+    setOptimisticRefs(() => { inserts += 1; }, () => {});
+    await expect(routeMessage({
+      sessionId: 'session-queue', directory: '/skills/project', content: 'queued',
+      providerID: 'provider-a', modelID: 'model-a',
+      onMessageID: async () => { throw new Error('claim expired'); },
+    })).rejects.toThrow('claim expired');
+    expect(inserts).toBe(0);
+    expect(sendMessageCalls).toEqual([]);
+  });
+
   test('forwards trailing arguments to the skill command', async () => {
     useSkillsStore.setState({
       skills: [{ name: 'grill-with-docs', path: '/skills/grill-with-docs/SKILL.md', scope: 'user', source: 'opencode' }],

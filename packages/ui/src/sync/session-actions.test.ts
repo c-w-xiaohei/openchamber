@@ -1436,6 +1436,31 @@ describe("updateSessionTitle live state", () => {
 })
 
 describe("optimisticSend target directory", () => {
+  test("awaits the exact optimistic identity before inserting or dispatching", async () => {
+    const { optimisticSend, setActionRefs, setOptimisticRefs } = await import("./session-actions")
+    const store = createStore({})
+    setActionRefs(actionSdk, createChildStores([["/target/project", store]]), () => "/target/project")
+    const inserted: string[] = []
+    const sent: string[] = []
+    const identities: string[] = []
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    setOptimisticRefs((input) => { inserted.push(input.message.id) }, () => {})
+    const pending = optimisticSend({
+      sessionId: "session-queued", content: "queued", providerID: "p", modelID: "m",
+      onMessageID: async (id) => { identities.push(id); await gate },
+      send: async (id) => { sent.push(id) },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(identities).toHaveLength(1)
+    expect(inserted).toEqual([])
+    expect(sent).toEqual([])
+    release()
+    await pending
+    expect(inserted).toEqual(identities)
+    expect(sent).toEqual(identities)
+  })
+
   beforeEach(() => {
     replyCalls.length = 0
     scopedClientDirectories.length = 0
