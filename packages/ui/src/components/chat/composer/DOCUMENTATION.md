@@ -391,6 +391,11 @@ and the send path reading the same grammar.
   origin is no longer the rendered draft is appended to the origin's draft
   through `restoreDraft`. It is not inserted or sent in the visible session,
   including for **Insert and send**, and a toast says where it went.
+  Revert captures the live draft before its message refresh and leaves the
+  composer untouched until acceptance. A late confirmation restores the source
+  message only when the same runtime/session owns the visible composer and its
+  draft still matches. See the session action rules in
+  `packages/ui/src/sync/DOCUMENTATION.md`.
 - `state/useDraftTarget.ts` — the draft can target a directory that does not
   exist yet (a worktree being created). It must survive not appearing in the
   branch list, or the selector snaps back to the project root mid-creation. It

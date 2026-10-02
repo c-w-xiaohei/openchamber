@@ -3,6 +3,8 @@ import type { PermissionRequest } from "@/types/permission"
 import type { FormRequest } from "@/lib/opencode/model"
 import type { InputState } from "./input-store"
 import { formSubmissionKey, useFormSubmissionStore } from "./form-submission-state"
+import { createChatDraftIdentity, registerRenderedChatDraft } from "@/lib/chatDraftPersistence"
+import type { InlineCommentDraft } from "@/stores/useInlineCommentDraftStore"
 
 // Records the client calls the actions make. The actions talk to
 // `opencodeClient` only: OpenCode's own SDK never reaches this layer.
@@ -49,6 +51,12 @@ const deletedCleanupIdentities: Array<{ runtimeKey: string; directory: string; s
 const movedSessionDirectories: Array<{ sessionID: string; directory: string }> = []
 const globalArchivedSessions: Session[] = []
 let runtimeKey = "default-runtime"
+let visibleSessionId: string | null = null
+let stagedRevertGate: Promise<void> | null = null
+let messageRefreshGate: Promise<void> | null = null
+let renderedComposerText = "previous draft"
+let unregisterComposer = () => {}
+const emptyInlineDrafts: InlineCommentDraft[] = []
 const AMBIGUOUS_TRANSPORT_FAILURE = Symbol("ambiguous-transport-failure")
 
 const notFound = (kind: string) => Object.assign(new Error(`${kind}NotFoundError`), { status: 404 })
@@ -105,6 +113,7 @@ mock.module("@/lib/opencode/client", () => ({
         params: { sessionID: sessionId, messageID: messageId, directory: options?.directory },
       })
       if (failingRevertSessionIds.has(sessionId)) throw new Error("session.revert.stage failed (500): rejected")
+      if (stagedRevertGate) await stagedRevertGate
       // Mirror the server: staging records the marker on the session, which is
       // what the action re-reads through `getSession` afterwards.
       const record = sessionRecords.get(sessionId)
@@ -179,7 +188,7 @@ mock.module("./session-ui-store", () => ({
         if (sessionId === "session-b") return "/other/project"
         return null
       },
-      currentSessionId: null,
+      currentSessionId: visibleSessionId,
       setCurrentSession: (sessionId: string | null, directoryHint?: string | null) => {
         selectedSessions.push({ sessionId, directoryHint })
       },
@@ -226,7 +235,7 @@ mock.module("./input-store", () => ({
 mock.module("@/stores/useInlineCommentDraftStore", () => ({
   useInlineCommentDraftStore: {
     getState: () => ({
-      getDrafts: () => [],
+      getDrafts: () => emptyInlineDrafts,
       clearDrafts: () => {},
       restoreDrafts: () => {},
       addDraft: () => {},
@@ -295,7 +304,7 @@ mock.module("./session-message-loader", () => ({
   getImperativeSessionMessageLoader: () => ({
     invalidateSession: () => {},
     ensure: async () => {},
-    refreshTail: async () => {},
+    refreshTail: async () => { if (messageRefreshGate) await messageRefreshGate },
     getSnapshot: () => ({ status: "ready" as const }),
   }),
 }))
@@ -2197,6 +2206,12 @@ describe("forkFromLastCompletedTurn", () => {
 describe("revertToMessage passes session directory", () => {
   beforeEach(() => {
     replyCalls.length = 0
+    visibleSessionId = "session-a"
+    stagedRevertGate = null
+    messageRefreshGate = null
+    renderedComposerText = "previous draft"
+    const composerIdentity = createChatDraftIdentity(runtimeKey, "/test/project", "session-a")
+    if (composerIdentity) unregisterComposer = registerRenderedChatDraft(composerIdentity, () => ({ text: renderedComposerText, confirmedMentions: new Set() }))
     sessionMessageRecords.clear()
     sessionRecords.clear()
     failingRevertSessionIds.clear()
@@ -2205,6 +2220,86 @@ describe("revertToMessage passes session directory", () => {
       pendingInputMode: "replace",
       attachedFiles: [],
     })
+  })
+  afterEach(() => {
+    unregisterComposer()
+    messageRefreshGate = null
+  })
+
+  for (const switchRuntime of [false, true]) {
+    test(`captures draft ownership before the initial message refresh, runtime switch=${switchRuntime}`, async () => {
+      const session = sessionFixture("session-a")
+      sessionRecords.set(session.id, session)
+      const message: Message = { id: "msg_refresh", sessionID: session.id, role: "user", time: { created: 2 } }
+      const part: Part = { id: "prt_refresh", sessionID: session.id, messageID: message.id, type: "text", text: "old sent prompt" }
+      const store = createStore({}, { session: [session], message: { [session.id]: [message] }, part: { [message.id]: [part] } })
+      let finishRefresh = () => {}
+      messageRefreshGate = new Promise<void>((resolve) => { finishRefresh = resolve })
+      const { setActionRefs, revertToMessage } = await import("./session-actions")
+      setActionRefs(createChildStores([[session.directory, store]]), () => session.directory)
+      const initialRuntimeKey = runtimeKey
+      const pending = revertToMessage(session.id, message.id).catch((error: Error) => error)
+      renderedComposerText = "new unsent text during refresh"
+      if (switchRuntime) runtimeKey = `${initialRuntimeKey}-replacement`
+      finishRefresh()
+      const result = await pending
+      if (switchRuntime) {
+        expect(result).toBeInstanceOf(Error)
+        expect(replyCalls.some((call) => call.method === "session.revert.stage")).toBe(false)
+      } else {
+        expect(result).toBeUndefined()
+        expect(store.getState().session[0].revert?.messageID).toBe(message.id)
+      }
+      expect(inputState.pendingInputText).toBe("previous draft")
+      expect(renderedComposerText).toBe("new unsent text during refresh")
+      runtimeKey = initialRuntimeKey
+    })
+  }
+
+  for (const switchSession of [false, true]) {
+    test(`waits for V2 staged-revert acceptance and fences navigation=${switchSession}`, async () => {
+      const session = sessionFixture("session-a")
+      sessionRecords.set(session.id, session)
+      const message: Message = { id: "msg_2", sessionID: session.id, role: "user", time: { created: 2 } }
+      const part: Part = { id: "prt_2", sessionID: session.id, messageID: message.id, type: "text", text: "edit this" }
+      const store = createStore({}, { session: [session], message: { [session.id]: [message] }, part: { [message.id]: [part] } })
+      let acknowledge = () => {}
+      stagedRevertGate = new Promise<void>((resolve) => { acknowledge = resolve })
+      const { setActionRefs, revertToMessage } = await import("./session-actions")
+      setActionRefs(createChildStores([[session.directory, store]]), () => session.directory)
+      const pending = revertToMessage(session.id, message.id)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(store.getState().session[0].revert).toBeUndefined()
+      expect(inputState.pendingInputText).toBe("previous draft")
+      if (switchSession) visibleSessionId = "other-session"
+      acknowledge()
+      await pending
+      expect(store.getState().session[0].revert?.messageID).toBe(message.id)
+      expect(inputState.pendingInputText).toBe(switchSession ? "previous draft" : "edit this")
+      expect(replyCalls.some((call) => call.method === "session.revert.commit")).toBe(false)
+      stagedRevertGate = null
+    })
+  }
+
+  test("a late staged revert does not replace newer text in the same composer", async () => {
+    const session = sessionFixture("session-a")
+    sessionRecords.set(session.id, session)
+    const message: Message = { id: "msg_new", sessionID: session.id, role: "user", time: { created: 2 } }
+    const part: Part = { id: "prt_new", sessionID: session.id, messageID: message.id, type: "text", text: "old sent prompt" }
+    const store = createStore({}, { session: [session], message: { [session.id]: [message] }, part: { [message.id]: [part] } })
+    let acknowledge = () => {}
+    stagedRevertGate = new Promise<void>((resolve) => { acknowledge = resolve })
+    const { setActionRefs, revertToMessage } = await import("./session-actions")
+    setActionRefs(createChildStores([[session.directory, store]]), () => session.directory)
+    const pending = revertToMessage(session.id, message.id)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    renderedComposerText = "new unsent text before debounce"
+    acknowledge()
+    await pending
+    expect(inputState.pendingInputText).toBe("previous draft")
+    expect(renderedComposerText).toBe("new unsent text before debounce")
+    expect(store.getState().session[0].revert?.messageID).toBe(message.id)
+    stagedRevertGate = null
   })
 
   test("routes revert through the session directory instead of the current directory", async () => {

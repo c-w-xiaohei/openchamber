@@ -2179,6 +2179,7 @@ export const dict: Record<I18nKey, string> = {
   "chat.revert.toast.undo": "Revertido a {preview}",
   "chat.revert.toast.redo": "Rehecho",
   "chat.revert.toast.restored": "Todos los mensajes restaurados",
+  "chat.revert.toast.failed": "No se pudo revertir el mensaje",
   "chat.chatInput.actions.abortConfirmationHint": "Pulsa Esc otra vez para detener",
   "chat.toast.opencodeRestartInterrupted.title": "Conversación interrumpida",
   "chat.toast.opencodeRestartInterrupted.description": "OpenCode se reinició mientras aún se estaba generando una respuesta. Envía un mensaje para continuar.",

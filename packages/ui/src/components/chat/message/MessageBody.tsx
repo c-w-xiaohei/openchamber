@@ -262,6 +262,8 @@ interface MessageBodyProps {
     turnGroupingContext?: TurnGroupingContext;
     onRevert?: () => void;
     onFork?: () => void;
+    revertPending?: boolean;
+    forkPending?: boolean;
     errorMessage?: string;
     /** Raw provider response behind `errorMessage`, shown as collapsed details. */
     errorResponseBody?: string;
@@ -375,7 +377,7 @@ const CopyMessageLinkButton: React.FC<{ onCopyLink: () => void }> = ({ onCopyLin
     );
 };
 
-const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobile, alwaysShowActions = isMobile, hasTouchInput, hasTextContent, onCopyMessage, copiedMessage, onCopyLink, onShowPopup, agentMention, onRevert, onFork, contextPinned, contextPinPending, onToggleContextPin, userActionsMode = 'inline', stickyUserHeaderEnabled = true, extraActions }: {
+const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobile, alwaysShowActions = isMobile, hasTouchInput, hasTextContent, onCopyMessage, copiedMessage, onCopyLink, onShowPopup, agentMention, onRevert, onFork, revertPending, forkPending, contextPinned, contextPinPending, onToggleContextPin, userActionsMode = 'inline', stickyUserHeaderEnabled = true, extraActions }: {
     messageId: string;
     parts: Part[];
     messageCreatedAt?: number | null;
@@ -390,6 +392,8 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
     agentMention?: AgentMentionInfo;
     onRevert?: () => void;
     onFork?: () => void;
+    revertPending?: boolean;
+    forkPending?: boolean;
     contextPinned?: boolean;
     contextPinPending?: boolean;
     onToggleContextPin?: () => void;
@@ -484,7 +488,7 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
     const effectiveOnFork = chatSurfaceMode === 'mini-chat' ? undefined : onFork;
     const [userActionSheetOpen, setUserActionSheetOpen] = React.useState(false);
     const userSheetActions = React.useMemo(() => {
-        const actions: Array<{ id: string; label: string; icon: React.ReactNode; disabled?: boolean; onSelect: () => void }> = [];
+        const actions: Array<{ id: string; label: string; icon: React.ReactNode; disabled?: boolean; pending?: boolean; onSelect: () => void }> = [];
         if (canCopyMessage && hasCopyableText && onCopyMessage) {
             actions.push({
                 id: 'copy',
@@ -521,7 +525,9 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
             actions.push({
                 id: 'fork',
                 label: t('chat.messageBody.actions.fork'),
-                icon: <Icon name="git-branch" className="h-4 w-4" />,
+                icon: <Icon name={forkPending ? 'loader-4' : 'git-branch'} className={cn('h-4 w-4', forkPending && 'animate-spin')} />,
+                disabled: revertPending || forkPending,
+                pending: forkPending,
                 onSelect: () => { effectiveOnFork(); },
             });
         }
@@ -529,7 +535,9 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
             actions.push({
                 id: 'revert',
                 label: t('chat.messageBody.actions.revert'),
-                icon: <Icon name="arrow-go-back" className="h-4 w-4" />,
+                icon: <Icon name={revertPending ? 'loader-4' : 'arrow-go-back'} className={cn('h-4 w-4', revertPending && 'animate-spin')} />,
+                disabled: revertPending || forkPending,
+                pending: revertPending,
                 onSelect: () => { onRevert(); },
             });
         }
@@ -537,7 +545,7 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
             actions.push({ id: extra.id, label: extra.label, icon: extra.icon, onSelect: extra.onSelect });
         }
         return actions;
-    }, [canCopyMessage, contextPinPending, contextPinned, effectiveOnFork, extraActions, hasCopyableText, onCopyLink, onCopyMessage, onRevert, onToggleContextPin, t]);
+    }, [canCopyMessage, contextPinPending, contextPinned, effectiveOnFork, extraActions, forkPending, hasCopyableText, onCopyLink, onCopyMessage, onRevert, onToggleContextPin, revertPending, t]);
     const timestamp = React.useMemo(() => {
         void locale;
         if (typeof messageCreatedAt !== 'number' || messageCreatedAt <= 0) return null;
@@ -624,7 +632,11 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
                                         key={action.id}
                                         type="button"
                                         disabled={action.disabled}
-                                        className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-foreground transition-colors active:bg-interactive-active disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                        aria-busy={action.pending || undefined}
+                                        className={cn(
+                                            'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-foreground transition-colors active:bg-interactive-active disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                                            action.pending && 'disabled:opacity-100',
+                                        )}
                                         onClick={() => {
                                             setUserActionSheetOpen(false);
                                             action.onSelect();
@@ -647,15 +659,20 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-ring"
+                                    className={cn(
+                                        'h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-ring',
+                                        revertPending && 'disabled:opacity-100',
+                                    )}
                                     aria-label={t('chat.messageBody.actions.revertAria')}
+                                    disabled={revertPending || forkPending}
+                                    aria-busy={revertPending || undefined}
                                     onPointerDown={(event) => event.stopPropagation()}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         onRevert();
                                     }}
                                 >
-                                    <Icon name="arrow-go-back" className="h-3 w-3" />
+                                    <Icon name={revertPending ? 'loader-4' : 'arrow-go-back'} className={cn('h-3 w-3', revertPending && 'animate-spin')} />
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent sideOffset={6}>{t('chat.messageBody.actions.revert')}</TooltipContent>
@@ -668,15 +685,20 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-ring"
+                                    className={cn(
+                                        'h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-ring',
+                                        forkPending && 'disabled:opacity-100',
+                                    )}
                                     aria-label={t('chat.messageBody.actions.forkAria')}
+                                    disabled={revertPending || forkPending}
+                                    aria-busy={forkPending || undefined}
                                     onPointerDown={(event) => event.stopPropagation()}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         effectiveOnFork();
                                     }}
                                 >
-                                    <Icon name="git-branch" className="h-3 w-3" />
+                                    <Icon name={forkPending ? 'loader-4' : 'git-branch'} className={cn('h-3 w-3', forkPending && 'animate-spin')} />
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent sideOffset={6}>{t('chat.messageBody.actions.fork')}</TooltipContent>
@@ -2582,6 +2604,8 @@ const MessageBody = React.memo(({ isUser, ...props }: MessageBodyProps) => {
                 agentMention={props.agentMention}
                 onRevert={props.onRevert}
                 onFork={props.onFork}
+                revertPending={props.revertPending}
+                forkPending={props.forkPending}
                 contextPinned={props.contextPinned}
                 contextPinPending={props.contextPinPending}
                 onToggleContextPin={props.onToggleContextPin}

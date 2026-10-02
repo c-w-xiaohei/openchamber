@@ -30,6 +30,7 @@ export interface MobilePillComposerProps {
     isVSCode: boolean;
     canAbort: boolean;
     isSubmitting: boolean;
+    showAbortHint?: boolean;
     footerIconButtonClass: string;
     iconSizeClass: string;
     sendIconSizeClass: string;
@@ -64,6 +65,7 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
         isVSCode,
         canAbort,
         isSubmitting,
+        showAbortHint,
         footerIconButtonClass,
         iconSizeClass,
         sendIconSizeClass,
@@ -166,6 +168,11 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
                     no shape animation (WKWebView). */}
                 {isSubmitting || canAbort ? (
                     <div className="relative">
+                        {showAbortHint ? (
+                            <span className="pointer-events-none absolute bottom-full right-0 z-30 mb-1 whitespace-nowrap typography-micro text-muted-foreground">
+                                {t('chat.chatInput.actions.abortConfirmationHint')}
+                            </span>
+                        ) : null}
                         {isSubmitting ? (
                             <button
                                 type="button"

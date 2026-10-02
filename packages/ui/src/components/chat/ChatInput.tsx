@@ -517,7 +517,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         void prepareChatDraftDirectory();
     }, [message, newSessionDraft.target, newSessionDraftOpen, prepareChatDraftDirectory]);
     const consumePendingSyntheticParts = useInputStore((s) => s.consumePendingSyntheticParts);
-    const acknowledgeSessionAbort = useSessionUIStore((s) => s.acknowledgeSessionAbort);
     const abortCurrentOperation = React.useCallback(
         (sessionIdOverride?: string) => sessionActions.abortCurrentOperation(sessionIdOverride ?? currentSessionId ?? ''),
         [currentSessionId],
@@ -940,8 +939,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
         return { status: 'ready', prepared };
     }, [resolveInlineFileMention]);
-    const prevWasAbortedRef = React.useRef(false);
-
     // Issue linking state
     const [referencePicker, setReferencePicker] = React.useState<ReferencePickerState>(null);
     // The paste-toast tap may need to reopen the collapsed mobile composer.
@@ -3141,12 +3138,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }, [isMobile]);
 
     React.useEffect(() => {
-        if (abortPromptSessionId && abortPromptSessionId !== currentSessionId) {
-            clearAbortPrompt();
-        }
-    }, [abortPromptSessionId, currentSessionId, clearAbortPrompt]);
-
-    React.useEffect(() => {
         canAcceptDropRef.current = Boolean(currentSessionId || newSessionDraftOpen);
     }, [currentSessionId, newSessionDraftOpen]);
 
@@ -3773,15 +3764,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         handlePermissionModeCycle();
     });
 
-    // Acknowledging the abort record is what lets the working chip resume for
-    // the next run; the old "Aborted" banner that used to accompany it is gone.
-    React.useEffect(() => {
-        const pendingAbort = Boolean(abortPromptSessionId) && abortPromptSessionId === currentSessionId;
-        if (!prevWasAbortedRef.current && pendingAbort && currentSessionId) {
-            acknowledgeSessionAbort(currentSessionId);
-        }
-        prevWasAbortedRef.current = pendingAbort;
-    }, [abortPromptSessionId, acknowledgeSessionAbort, currentSessionId]);
+    const showAbortHint = Boolean(
+        abortPromptSessionId
+        && abortPromptSessionId === currentSessionId
+        && sessionPhase !== 'idle',
+    );
 
     return (
         <>
@@ -3909,6 +3896,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         isVSCode={isVSCode}
                         canAbort={canAbort}
                         isSubmitting={isSubmitting}
+                        showAbortHint={showAbortHint}
                         footerIconButtonClass={footerIconButtonClass}
                         iconSizeClass={iconSizeClass}
                         sendIconSizeClass={sendIconSizeClass}
@@ -4120,6 +4108,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         canAbort={canAbort}
                         hasContent={Boolean(hasContent)}
                         isSubmitting={isSubmitting}
+                        showAbortHint={showAbortHint}
                         isExpandedInput={isExpandedInput}
                         permissionMode={shownPermissionMode}
                         isPermissionAutoAcceptInteractive={isPermissionAutoAcceptInteractive}

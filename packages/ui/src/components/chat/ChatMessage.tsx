@@ -630,11 +630,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         return true;
     }, [isUser, messageTextContent]);
 
-    const handleRevert = React.useCallback(() => {
-        if (!sessionId || !message.info.id) return;
-        useSessionUIStore.getState().revertToMessage(sessionId, message.info.id);
-    }, [sessionId, message.info.id]);
-
     // Extension actions for this role. The record is read at click time so a
     // streaming message does not rebuild the list on every part update.
     const guestActionEntries = useGuestActions();
@@ -657,11 +652,30 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         }));
     }, [guestActionEntries, isUser, sessionId, t]);
 
-    // NEW: Fork handler
-    const handleFork = React.useCallback(() => {
-        if (!sessionId || !message.info.id) return;
-        useSessionUIStore.getState().forkFromMessage(sessionId, message.info.id);
-    }, [sessionId, message.info.id]);
+    const [revertPending, setRevertPending] = React.useState(false);
+    const [forkPending, setForkPending] = React.useState(false);
+    const handleRevert = React.useCallback(async () => {
+        if (!sessionId || !message.info.id || revertPending || forkPending) return;
+        setRevertPending(true);
+        try {
+            await useSessionUIStore.getState().revertToMessage(sessionId, message.info.id);
+        } catch {
+            // The store reports the failure once.
+        } finally {
+            setRevertPending(false);
+        }
+    }, [forkPending, message.info.id, revertPending, sessionId]);
+    const handleFork = React.useCallback(async () => {
+        if (!sessionId || !message.info.id || revertPending || forkPending) return;
+        setForkPending(true);
+        try {
+            await useSessionUIStore.getState().forkFromMessage(sessionId, message.info.id);
+        } catch {
+            // The store reports the failure once.
+        } finally {
+            setForkPending(false);
+        }
+    }, [forkPending, message.info.id, revertPending, sessionId]);
 
     const handleToggleTool = React.useCallback((toolId: string) => {
         const isDefaultOpen = defaultOpenToolIds.has(toolId);
@@ -817,8 +831,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 copiedMessage={copiedMessage}
                                                 showReasoningTraces={showReasoningTraces}
                                                 agentMention={agentMention}
-                                                onRevert={handleRevert}
-                                                onFork={isUser ? handleFork : undefined}
+                                                 onRevert={handleRevert}
+                                                 onFork={isUser ? handleFork : undefined}
+                                                 revertPending={revertPending}
+                                                 forkPending={forkPending}
                                                 contextPinned={isPinnedIntoContext}
                                                 contextPinPending={pinPending}
                                                 onToggleContextPin={canPinIntoContext && messageCreatedAt ? handleToggleContextPin : undefined}
@@ -854,8 +870,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 copiedMessage={copiedMessage}
                                                 showReasoningTraces={showReasoningTraces}
                                                 agentMention={agentMention}
-                                                onRevert={handleRevert}
-                                                onFork={isUser ? handleFork : undefined}
+                                                 onRevert={handleRevert}
+                                                 onFork={isUser ? handleFork : undefined}
+                                                 revertPending={revertPending}
+                                                 forkPending={forkPending}
                                                 contextPinned={isPinnedIntoContext}
                                                 contextPinPending={pinPending}
                                                 onToggleContextPin={canPinIntoContext && messageCreatedAt ? handleToggleContextPin : undefined}

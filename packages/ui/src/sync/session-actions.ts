@@ -48,7 +48,7 @@ import { normalizePath } from "@/lib/pathNormalization"
 import { mergeMessages } from "./optimistic"
 import { messagesBefore, messagesFrom } from "./message-ordering"
 import { deleteChatDirectory } from "@/lib/chatDirectories"
-import { createChatDraftIdentity } from "@/lib/chatDraftPersistence"
+import { createChatDraftIdentity, readRenderedChatDraft } from "@/lib/chatDraftPersistence"
 import { cancelSessionTitleGeneration } from "./session-title-generation"
 import { recordSessionActionFailure } from "./session-action-failures"
 import { applyForkInheritance } from "@/lib/sessionForkInheritance"
@@ -2382,20 +2382,28 @@ export async function dismissOpenFormsForSession(sessionId: string): Promise<boo
 /**
  * Revert to a specific user message.
  *
- * 1. Abort if session is busy
- * 2. Extract text from the target message for prompt restoration
- * 3. Optimistically set revert marker so messages hide immediately
- * 4. Call the runtime revert endpoint and merge returned session
- * 5. Set pendingInputText so the reverted message text appears in the input
+ * Capture composer ownership before refreshing messages, then stage the V2
+ * revert. Restore the prompt only after acceptance and only if its draft has
+ * not changed during any part of this operation.
  */
 export async function revertToMessage(sessionId: string, messageId: string): Promise<void> {
+  const runtimeKey = getRuntimeKey()
   const { store, directory } = dirStoreForSession(sessionId)
+  const composerIdentity = createChatDraftIdentity(runtimeKey, directory, sessionId)
+  const composerSnapshot = readRenderedChatDraft(composerIdentity)
+  const attachmentSnapshot = useInputStore.getState().attachedFiles
+  const pendingInputSnapshot = useInputStore.getState().pendingInputText
+  const draftTarget: InlineCommentDraftTarget | null = directory ? { directory, sessionKey: sessionId } : null
+  const contextSnapshot = draftTarget ? useInlineCommentDraftStore.getState().getDrafts(draftTarget) : null
+  await refetchSessionMessages(sessionId)
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
   const state = store.getState()
 
   const localTarget = state.message[sessionId]?.find((message) => message.id === messageId)
   const targetMessage = localTarget
     ?? (await fetchSessionMessages(sessionId, directory)).find((message) => message.id === messageId)
   if (!targetMessage) throw new Error(`Cannot revert session: message ${messageId} was not found`)
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
 
   // Abort if busy before mutating session state
   const status = state.session_status[sessionId]
@@ -2430,89 +2438,38 @@ export async function revertToMessage(sessionId: string, messageId: string): Pro
   }
   const revertMessageID = transcriptCutForMessage(messages, messageId)
 
-  // Optimistically set only the revert marker. Keep messages and parts in the
-  // local store; visible-message selectors derive the displayed timeline from
-  // session.revert. This matches the server model and preserves reverted
-  // messages for the restore dock without maintaining a separate shadow copy.
-  const prevRevert = state.session.find((candidate) => candidate.id === sessionId)?.revert
-  const sessions = [...state.session]
-  const sessionIdx = sessions.findIndex((s) => s.id === sessionId)
 
-  if (sessionIdx >= 0) {
-    sessions[sessionIdx] = { ...sessions[sessionIdx], revert: { messageID: revertMessageID } }
-    store.setState({ session: sessions })
+  // Descendants go first so the parent's file snapshot wins. Keep local
+  // content intact until V2 confirms the staged revert; never commit it here.
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
+  await cascadeRevertToDescendants(sessionId, descendantRevertCutoff(state, targetMessage))
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
+  await opencodeClient.stageRevert(sessionId, revertMessageID, { directory })
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
+  const revertedSession = await opencodeClient.getSession(sessionId, directory)
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
+  const current = store.getState()
+  const updated = [...current.session]
+  const idx = updated.findIndex((session) => session.id === sessionId)
+  if (idx >= 0) {
+    updated[idx] = revertedSession
+    store.setState({ session: updated })
   }
-
-  // Save input store state before mutations — if the API fails we need to
-  // roll back both text and attachments to their previous values.
-  const prevInputAttachments = [...useInputStore.getState().attachedFiles]
-  const prevInputText = useInputStore.getState().pendingInputText
-  const prevInputMode = useInputStore.getState().pendingInputMode
-  const draftTarget: InlineCommentDraftTarget | null = directory
-    ? { directory, sessionKey: sessionId }
-    : null
-  const prevDrafts = draftTarget ? useInlineCommentDraftStore.getState().getDrafts(draftTarget) : []
-
-  // Restore reverted message text and file attachments to input
-  if (messageText) {
-    useInputStore.setState({
-      pendingInputText: messageText,
-      pendingInputMode: "replace" as const,
-    })
-  }
-
-  // Restore file/image attachments from the target message.
-  // Clear existing attachments first — previous revert's attachments
-  // must not carry over, even when the current message has no files.
-  // Only a prompt goes back to the composer: reverting a subagent run report
-  // leaves whatever the user is typing alone.
-  if (targetMsg?.role === "user") {
+  // Restoring another session's prompt into the visible composer loses work.
+  const currentComposer = readRenderedChatDraft(composerIdentity)
+  const composerUnchanged = composerSnapshot && currentComposer
+    && composerSnapshot.text === currentComposer.text
+    && composerSnapshot.confirmedMentions.size === currentComposer.confirmedMentions.size
+    && [...composerSnapshot.confirmedMentions].every((mention) => currentComposer.confirmedMentions.has(mention))
+  if (useSessionUIStore.getState().currentSessionId === sessionId && targetMsg?.role === "user"
+    && composerUnchanged && useInputStore.getState().attachedFiles === attachmentSnapshot
+    && useInputStore.getState().pendingInputText === pendingInputSnapshot
+    && (!draftTarget || useInlineCommentDraftStore.getState().getDrafts(draftTarget) === contextSnapshot)) {
+    if (messageText) useInputStore.setState({ pendingInputText: messageText, pendingInputMode: "replace" })
     restoreFilePartsToInput(submittedFileParts)
     if (draftTarget) restoreContextPartsToInput(submittedContextParts, draftTarget)
   }
-
-  // Call SDK and merge authoritative result into store
-  try {
-    // Descendants go first because OpenCode also restores file snapshots during
-    // revert. All sessions share a directory, so the parent's snapshot must win.
-    await cascadeRevertToDescendants(sessionId, descendantRevertCutoff(state, targetMessage))
-    // Stage only: the messages disappear behind the revert marker while the
-    // dock offers Commit (finalize) or Clear (bring them back).
-    await opencodeClient.stageRevert(sessionId, revertMessageID, { directory })
-    const revertedSession = await opencodeClient.getSession(sessionId, directory)
-    const current = store.getState()
-    const updated = [...current.session]
-    const idx = updated.findIndex((s) => s.id === sessionId)
-    if (idx >= 0) {
-      updated[idx] = revertedSession
-      store.setState({ session: updated })
-    }
-    if (directory) {
-      sessionEvents.requestGitRefresh({ directory })
-    }
-  } catch (err) {
-    // Rollback: restore removed messages + revert marker
-    const current = store.getState()
-    const rollback = [...current.session]
-    const idx = rollback.findIndex((s) => s.id === sessionId)
-    if (idx >= 0) {
-      rollback[idx] = { ...rollback[idx], revert: prevRevert }
-    }
-    store.setState({
-      session: rollback,
-    })
-    // Rollback input store: restore previous text and attachments
-    useInputStore.setState({
-      pendingInputText: prevInputText,
-      pendingInputMode: prevInputMode,
-      attachedFiles: prevInputAttachments,
-    })
-    if (draftTarget) {
-      useInlineCommentDraftStore.getState().clearDrafts(draftTarget)
-      useInlineCommentDraftStore.getState().restoreDrafts(draftTarget, prevDrafts)
-    }
-    throw err
-  }
+  if (directory) sessionEvents.requestGitRefresh({ directory })
 }
 
 export async function refetchSessionMessages(sessionId: string): Promise<void> {
