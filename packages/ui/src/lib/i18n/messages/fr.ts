@@ -1927,6 +1927,7 @@ export const dict = {
   'chat.revert.toast.undo': 'Revenu à {preview}',
   'chat.revert.toast.redo': 'Refait',
   'chat.revert.toast.restored': 'Restauré tous les messages',
+  'chat.chatInput.actions.abortConfirmationHint': 'Appuyez de nouveau sur Echap pour arrêter',
   'chat.toast.opencodeRestartInterrupted.title': 'Discussion interrompue',
   'chat.toast.opencodeRestartInterrupted.description': 'OpenCode a redémarré alors qu’une réponse était encore en cours. Envoyez un message pour continuer.',
   'chat.toast.opencodeRestartInterrupted.openSession': 'Ouvrir la session',

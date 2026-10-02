@@ -158,6 +158,8 @@ export type InputState = {
   attachmentDrafts: Map<string, AttachedFile[]>
   selectAttachmentDraft: (target: ChatDraftIdentity | null) => void
   restoreAttachedFiles: (files: AttachedFile[], target: ChatDraftIdentity | null) => void
+  acknowledgeAttachedFiles: (target: ChatDraftIdentity | null, ids: ReadonlySet<string>) => void
+  transferAttachedFiles: (source: ChatDraftIdentity | null, target: ChatDraftIdentity, files: AttachedFile[]) => void
   activeEditorFile: VSCodeActiveEditorFile | null
 
   setPendingInputText: (text: string | null, mode?: "replace" | "append" | "append-inline") => void
@@ -222,6 +224,19 @@ export const useInputStore = create<InputState>()((set, get) => ({
     if (missing.length) state.setAttachedFiles([...existing, ...missing], target)
   },
   activeEditorFile: null,
+
+  acknowledgeAttachedFiles: (target, ids) => {
+    const state = get()
+    const key = target ? getChatDraftIdentityKey(target) : null
+    const files = key === state.attachmentDraftKey ? state.attachedFiles : (key && state.attachmentDrafts.get(key)) || []
+    const remaining = files.filter((file) => !ids.has(file.id))
+    if (remaining.length !== files.length) state.setAttachedFiles(remaining, target)
+  },
+  transferAttachedFiles: (source, target, files) => {
+    get().restoreAttachedFiles(files, target)
+    if (source && getChatDraftIdentityKey(source) === getChatDraftIdentityKey(target)) return
+    get().acknowledgeAttachedFiles(source, new Set(files.map((file) => file.id)))
+  },
 
   setPendingInputText: (text, mode = "replace") =>
     set({ pendingInputText: text, pendingInputMode: mode }),

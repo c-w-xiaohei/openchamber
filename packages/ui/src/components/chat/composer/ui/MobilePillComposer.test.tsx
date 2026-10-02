@@ -10,7 +10,7 @@ import { I18nProvider } from '@/lib/i18n';
 
 import { MobilePillComposer } from './MobilePillComposer';
 
-const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: boolean; canAbort?: boolean }) => {
+const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: boolean; canAbort?: boolean; isSubmitting?: boolean; showAbortHint?: boolean }) => {
     const win = new Window({ url: 'http://localhost' });
     const values = { window: win, document: win.document, navigator: win.navigator, localStorage: win.localStorage, IS_REACT_ACT_ENVIRONMENT: true };
     const previous = new Map(Object.keys(values).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -32,6 +32,8 @@ const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: b
                 hasContent={options.hasContent}
                 isVSCode={false}
                 canAbort={options.canAbort ?? false}
+                isSubmitting={options.isSubmitting ?? false}
+                showAbortHint={options.showAbortHint}
                 footerIconButtonClass="icon-button"
                 iconSizeClass="icon-size"
                 sendIconSizeClass="send-icon-size"
@@ -48,14 +50,21 @@ const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: b
         </I18nProvider>
         </ThemeSystemProvider>
         </SyncProvider>));
-        if (options.hasContent && options.canAbort) {
+        if (options.isSubmitting) {
+            expect(container.querySelector('[aria-label="Queue message"]')).toBeNull();
+            const pending = container.querySelector<HTMLButtonElement>('[aria-busy="true"]');
+            expect(pending?.disabled).toBe(true);
+            await act(async () => { pending?.click(); });
+            expect(primaryActions).toBe(0);
+            expect(queued).toBe(0);
+        } else if (options.hasContent && options.canAbort) {
             // While a turn runs the draft can only be queued, never sent past it.
             const queue = container.querySelector<HTMLButtonElement>('[aria-label="Queue message"]');
             expect(queue).not.toBeNull();
             await act(async () => { queue?.click(); });
             expect(queued).toBe(1);
             expect(primaryActions).toBe(0);
-        } else if (options.hasContent) {
+        } else if (options.hasContent && !options.isSubmitting) {
             const send = container.querySelector<HTMLButtonElement>('[aria-label="Send message"]');
             expect(send).not.toBeNull();
             await act(async () => { send?.click(); });
@@ -74,6 +83,9 @@ const renderPill = async (options: { hasContent: boolean; newSessionDraftOpen: b
 };
 
 describe('MobilePillComposer', () => {
+    test('cannot queue the retained draft while its send has made the session busy', async () => {
+        await renderPill({ hasContent: true, newSessionDraftOpen: false, canAbort: true, isSubmitting: true });
+    });
     test('uses the inline action to send content while the session is idle', async () => {
         const markup = await renderPill({ hasContent: true, newSessionDraftOpen: false });
 
@@ -94,6 +106,23 @@ describe('MobilePillComposer', () => {
         expect(markup.indexOf('aria-label="Stop generating"')).toBeLessThan(markup.indexOf('aria-label="Queue message"'));
     });
 
+    test('disables attachment controls while a submission is pending', async () => {
+        const markup = await renderPill({ hasContent: true, newSessionDraftOpen: false, isSubmitting: true });
+
+        expect(markup).toContain('aria-label="Add attachment"');
+        expect(markup).toContain('disabled="" title="Add attachment" aria-label="Add attachment"');
+        expect(markup).toContain('aria-busy="true"');
+        expect(markup).toContain('href="#oc-loader-4"');
+        expect(markup).toContain('animate-spin');
+        expect(markup).not.toContain('disabled:opacity-50');
+    });
+
+    test('shows the second-Escape hint beside a running session stop action', async () => {
+        const markup = await renderPill({ hasContent: false, newSessionDraftOpen: false, canAbort: true, showAbortHint: true });
+
+        expect(markup).toContain('Press Esc again to stop');
+        expect(markup).toContain('aria-label="Stop generating"');
+    });
     test('uses the inline send action for content in a new-session draft', async () => {
         const markup = await renderPill({ hasContent: true, newSessionDraftOpen: true });
 

@@ -28,6 +28,19 @@ const STORAGE_KEY = 'openchamber.chatDrafts.v2';
 const MAX_DRAFTS = 50;
 const storage = getDeferredSafeStorage();
 const deletionListeners = new Set<(identity: ChatDraftIdentity) => void>();
+type AcceptedDraft = ChatDraftSnapshot & { identity: ChatDraftIdentity };
+const acceptedDraftListeners = new Set<(draft: AcceptedDraft) => void>();
+const renderedDrafts = new Map<string, () => ChatDraftSnapshot>();
+
+/** Read the editor's current refs, not its debounced disk copy. */
+export const readRenderedChatDraft = (identity: ChatDraftIdentity | null): ChatDraftSnapshot | null =>
+    identity ? renderedDrafts.get(getChatDraftIdentityKey(identity))?.() ?? null : null;
+
+export const registerRenderedChatDraft = (identity: ChatDraftIdentity, read: () => ChatDraftSnapshot): (() => void) => {
+    const key = getChatDraftIdentityKey(identity);
+    renderedDrafts.set(key, read);
+    return () => { if (renderedDrafts.get(key) === read) renderedDrafts.delete(key); };
+};
 let cachedRawEnvelope: string | null | undefined;
 let cachedEnvelope: PersistedChatDraftEnvelope | undefined;
 
@@ -122,4 +135,13 @@ export const clearChatDraft = (identity: ChatDraftIdentity, notify = false): voi
 export const subscribeChatDraftDeletion = (listener: (identity: ChatDraftIdentity) => void): (() => void) => {
   deletionListeners.add(listener);
   return () => deletionListeners.delete(listener);
+};
+
+export const notifyAcceptedChatDraft = (draft: AcceptedDraft): void => {
+  acceptedDraftListeners.forEach((listener) => listener(draft));
+};
+
+export const subscribeAcceptedChatDraft = (listener: (draft: AcceptedDraft) => void): (() => void) => {
+  acceptedDraftListeners.add(listener);
+  return () => acceptedDraftListeners.delete(listener);
 };

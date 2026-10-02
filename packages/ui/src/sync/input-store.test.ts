@@ -99,6 +99,29 @@ describe("input-store attachments", () => {
     useInputStore.getState().setAttachedFiles([])
   })
 
+  test("transfers submitted files into a materialized session and ACKs hidden owners without deleting newer files", () => {
+    const source = { runtimeKey: "runtime", directory: "/repo", sessionId: null }
+    const target = { ...source, sessionId: "created" }
+    const input = useInputStore.getState()
+    input.selectAttachmentDraft(source)
+    input.addRestoredAttachment({ url: "data:text/plain,submitted", mimeType: "text/plain", filename: "submitted.txt" })
+    const submitted = useInputStore.getState().attachedFiles
+    input.addRestoredAttachment({ url: "data:text/plain,newer", mimeType: "text/plain", filename: "newer.txt" })
+    input.transferAttachedFiles(source, target, submitted)
+    expect(useInputStore.getState().attachedFiles.map((file) => file.filename)).toEqual(["newer.txt"])
+    input.selectAttachmentDraft(target)
+    expect(useInputStore.getState().attachedFiles).toEqual(submitted)
+    input.selectAttachmentDraft({ ...target, sessionId: "elsewhere" })
+    input.addRestoredAttachment({ url: "data:text/plain,other", mimeType: "text/plain", filename: "other.txt" })
+    input.acknowledgeAttachedFiles(source, new Set(submitted.map((file) => file.id)))
+    input.acknowledgeAttachedFiles(target, new Set(submitted.map((file) => file.id)))
+    expect(useInputStore.getState().attachedFiles[0].filename).toBe("other.txt")
+    input.selectAttachmentDraft(target)
+    expect(useInputStore.getState().attachedFiles).toEqual([])
+    input.selectAttachmentDraft(source)
+    expect(useInputStore.getState().attachedFiles[0].filename).toBe("newer.txt")
+  })
+
   testWithMockFileReader("does not attach a local file that finishes reading after attachments are cleared", async () => {
     const addPromise = useInputStore.getState().addAttachedFile(new File(["hello"], "hello.txt", { type: "text/plain" }))
     expect(pendingReaders).toHaveLength(1)

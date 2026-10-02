@@ -946,6 +946,8 @@ export async function createSession(
   selectionTransition?: "submitted-draft",
   selection?: SessionCreateSelection,
   navigation: "open" | "preserve" = "open",
+  shouldSelect?: () => boolean,
+  onCreated?: (sessionId: string, directory: string | null) => void,
 ): Promise<Session | null> {
   const runtimeKey = getRuntimeKey()
   const runtimeClient = opencodeClient.getSdkClient()
@@ -978,7 +980,11 @@ export async function createSession(
       }
       getImperativeSessionMessageLoader()?.initializeCreatedSession({ directory: sessionDirectory, sessionID: session.id })
     }
-    if (navigation === "open") useSessionUIStore.getState().setCurrentSession(session.id, sessionDirectory, selectionTransition)
+    const sessionUI = useSessionUIStore.getState()
+    onCreated?.(session.id, sessionDirectory)
+    if (navigation === "open" && (!shouldSelect || shouldSelect())) {
+      sessionUI.setCurrentSession(session.id, sessionDirectory, selectionTransition)
+    }
     useSessionUIStore.getState().markSessionAsOpenChamberCreated(session.id)
     useGlobalSessionsStore.getState().upsertSession(session)
     return session

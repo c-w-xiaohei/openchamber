@@ -371,6 +371,19 @@ and the send path reading the same grammar.
   The hook also selects the attachment draft before paint. `input-store.ts`
   owns its in-memory files and scoped send recovery, documented in
   `packages/ui/src/sync/DOCUMENTATION.md`.
+  Remote prompt sends keep their exact text, confirmed-mention, and attachment
+  snapshot visible until `sendMessage` acknowledges it. The temporary sending
+  lock belongs to that same identity, survives composer remounts and runtime
+  A-to-B-to-A switches, transfers only from a submitted draft to its
+  materialized session, and never follows ordinary navigation. ACK clears only
+  its exact submitted operation; a rejection leaves it intact. The retained
+  attachment chips and attachment entry points stay disabled while that
+  operation is pending. Linked issue/PR replacement and removal follow the
+  same lock, while opening the captured reference in a browser remains available.
+  ACK clears only the exact linked-reference objects it sent, so a newer context
+  selection belongs to the next submission. The
+  existing restore path is a narrow fallback for external rewrites that emptied
+  the draft while the request was in flight.
 - `state/useDictationOrigin.ts` — a dictation belongs to the draft that was on
   screen when recording started. The transcript arrives later, after the user
   may have switched sessions in the one mounted composer. `ChatInput` records
