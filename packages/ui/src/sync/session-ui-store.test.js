@@ -1099,6 +1099,43 @@ describe('routeMessage skill invocation', () => {
     expect(liveLookupCalls).toEqual([]);
   });
 
+  test('binds the queue identity before routing prompts, skills, and commands', async () => {
+    useCommandsStore.setState({ commandsByDirectory: { '/skills/project': [{ name: 'inspect', template: '$ARGUMENTS' }] } });
+    useSkillsStore.setState({ skillsByDirectory: { '/skills/project': [{ name: 'queue-skill', path: '/skills/queue-skill/SKILL.md', scope: 'user', source: 'opencode' }] } });
+    try {
+      for (const content of ['queued batch', '/queue-skill argument', '/inspect argument']) {
+        let claimedID;
+        const sendRequest = async () => Response.json({ data: {} });
+        const route = await routeMessage({
+          sessionId: 'session-queue', directory: '/skills/project', content,
+          providerID: 'provider-a', modelID: 'model-a',
+          onMessageID: async (messageID) => { claimedID = messageID; },
+          sendRequest,
+        });
+        expect(claimedID).toMatch(/^msg_/);
+        const sent = route === 'prompt' ? sendMessageCalls.at(-1) : sendCommandCalls.at(-1);
+        expect(sent.sendRequest).toBe(sendRequest);
+        if (route === 'prompt') expect(sent.messageId).toBe(claimedID);
+        else expect(sent.messageId).toBeUndefined();
+      }
+    } finally {
+      opencodeClient.sendMessage = originalSendMessage;
+      opencodeClient.sendCommand = originalSendCommand;
+    }
+  });
+
+  test('does not insert or dispatch a queued prompt when binding its identity is rejected', async () => {
+    let inserts = 0;
+    setOptimisticRefs(() => { inserts += 1; }, () => {});
+    await expect(routeMessage({
+      sessionId: 'session-queue', directory: '/skills/project', content: 'queued',
+      providerID: 'provider-a', modelID: 'model-a',
+      onMessageID: async () => { throw new Error('claim expired'); },
+    })).rejects.toThrow('claim expired');
+    expect(inserts).toBe(0);
+    expect(sendMessageCalls).toEqual([]);
+  });
+
   test('preserves trailing arguments in the skill prompt', async () => {
     useSkillsStore.setState({
       skillsByDirectory: { '/skills/project': [{ name: 'grill-with-docs', path: '/skills/grill-with-docs/SKILL.md', scope: 'user', source: 'opencode' }] },

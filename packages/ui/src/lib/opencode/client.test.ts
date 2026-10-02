@@ -102,6 +102,21 @@ beforeEach(() => {
 })
 
 describe("request fidelity", () => {
+  test("queue transport carries native V2 prompt identity and command bodies", async () => {
+    const intercepted: Request[] = []
+    const sendRequest = async (request: Request) => {
+      intercepted.push(request)
+      return new URL(request.url).pathname.endsWith('/command') ? noContent() : json({ data: { id: "msg_queue" } })
+    }
+    await opencodeClient.sendMessage({ id: "ses_1", text: "queued", messageId: "msg_queue", directory: "/repo/app", sendRequest })
+    await opencodeClient.sendCommand({ id: "ses_1", command: "inspect", arguments: "auth", directory: "/repo/app", sendRequest })
+    expect(requests).toEqual([])
+    expect(intercepted.map((request) => new URL(request.url).pathname)).toEqual(["/api/session/ses_1/prompt", "/api/session/ses_1/command"])
+    expect(await intercepted[0].json()).toMatchObject({ id: "msg_queue", text: "queued" })
+    expect(await intercepted[1].json()).toEqual({ name: "inspect", text: "auth" })
+    for (const request of intercepted) expect(request.headers.get("x-opencode-directory")).toBe(encodeURIComponent("/repo/app"))
+  })
+
   test("a directory-scoped call carries the encoded directory header and lists that directory", async () => {
     responses.push(json({ data: [sessionInfo], cursor: { next: "c2" } }))
     const page = await opencodeClient.listSessionsPage({ directory: "/repo/app dir" })

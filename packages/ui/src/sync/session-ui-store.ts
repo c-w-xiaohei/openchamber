@@ -19,6 +19,7 @@ import type { AttachedFile, SessionContextUsage, SessionWorktreeAttachment } fro
 import type { PermissionMode } from "@/stores/utils/permissionAutoAccept"
 import type { WorktreeMetadata } from "@/types/worktree"
 import { opencodeClient, type SkillMentions } from "@/lib/opencode/client"
+import { ascendingId } from "@/lib/opencode/ids"
 import { buildSkillMentionInstruction } from "@/lib/skillMentionInstruction"
 import { runtimeFetch } from "@/lib/runtime-fetch"
 import { useConfigStore } from "@/stores/useConfigStore"
@@ -179,6 +180,8 @@ export async function routeMessage(params: {
   files?: Array<{ type: "file"; mime: string; url: string; filename: string }>
   additionalParts?: Array<{ text: string; synthetic?: boolean; metadata?: ContextPartMetadata; files?: Array<{ type: "file"; mime: string; url: string; filename: string }>; systemContext?: 'session-knowledge' }>
   appendSubmissions?: () => void
+  onMessageID?: (messageID: string) => void | Promise<void>
+  sendRequest?: (request: Request) => Promise<Response>
   delivery?: 'steer'
   skills?: SkillMentions
 }): Promise<'command' | 'prompt' | 'shell'> {
@@ -266,6 +269,9 @@ export async function routeMessage(params: {
       // `session.command` assigns the message id itself, so there is no id to
       // hang an optimistic user message on. The command's message arrives
       // through the stream instead.
+      // V2 commands allocate their own message id. The queue binds an
+      // operation identity, not a guessed command message id.
+      await params.onMessageID?.(ascendingId("msg"))
       params.appendSubmissions?.()
       const commandContext = [...contextItems, ...skillInstructionContext()]
       await opencodeClient.sendCommand({
@@ -279,6 +285,7 @@ export async function routeMessage(params: {
         context: commandContext.length > 0 ? commandContext : undefined,
         delivery: params.delivery,
         directory: requestDirectory,
+        sendRequest: params.sendRequest,
       })
       return 'command'
     }
@@ -302,6 +309,7 @@ export async function routeMessage(params: {
     files: sendFiles,
     context: contextItems,
     appendSubmissions: params.appendSubmissions,
+    onMessageID: params.onMessageID,
     send: (messageID, context) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
       id: params.sessionId,
@@ -314,6 +322,7 @@ export async function routeMessage(params: {
       context: context.length > 0 ? context : undefined,
       delivery: params.delivery,
       messageId: messageID,
+      sendRequest: params.sendRequest,
       directory: requestDirectory,
       skills,
     }).then(() => {}),
@@ -328,6 +337,8 @@ type CapturedSendTarget = {
 }
 
 type SendMessageOptions = {
+  onMessageID?: (messageID: string) => void | Promise<void>
+  sendRequest?: (request: Request) => Promise<Response>
   target?: CapturedSendTarget
   sessionId?: string
   directory?: string
@@ -1845,6 +1856,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         inputMode,
         files,
         appendSubmissions,
+        onMessageID: options?.onMessageID,
+        sendRequest: options?.sendRequest,
         delivery: options?.delivery,
         skills: options?.skills,
         additionalParts: mergedAdditionalParts?.map((p) => ({
@@ -1966,6 +1979,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
       inputMode,
       files,
       appendSubmissions,
+      onMessageID: options?.onMessageID,
+      sendRequest: options?.sendRequest,
       delivery: options?.delivery,
       skills: options?.skills,
       additionalParts: partsWithPinnedContext?.map((p) => ({

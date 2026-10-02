@@ -281,6 +281,7 @@ type RuntimeOpencodeClientConfig = {
   directory?: string
   /** Read-request timeout in ms. Overridable so tests can use short value. */
   requestTimeoutMs?: number
+  sendRequest?: (request: Request) => Promise<Response>
 }
 
 /**
@@ -296,6 +297,7 @@ export const createRuntimeOpencodeClient = (config: RuntimeOpencodeClientConfig)
     baseUrl: toOpencodeClientRoot(config.baseUrl),
     headers: config.directory ? { [OPENCODE_DIRECTORY_HEADER]: encodeURIComponent(config.directory) } : undefined,
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
+      if (config.sendRequest) return config.sendRequest(new Request(input, init))
       const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url)
       const method = String(init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase()
       if (isEventStreamUrl(url) || method === "POST") {
@@ -568,8 +570,9 @@ class OpencodeService {
   }
 
   /** Client for an explicit directory, else the current one, else unscoped. */
-  private clientFor(directory?: string | null): OpenCodeClient {
+  private clientFor(directory?: string | null, sendRequest?: (request: Request) => Promise<Response>): OpenCodeClient {
     const resolved = this.resolveDirectory(directory)
+    if (sendRequest) return createRuntimeOpencodeClient({ baseUrl: this.baseUrl, directory: resolved, sendRequest })
     return resolved ? this.getScopedSdkClient(resolved) : this.client
   }
 
@@ -1085,6 +1088,7 @@ class OpencodeService {
      */
     context?: SyntheticContextInput[]
     messageId?: string
+    sendRequest?: (request: Request) => Promise<Response>
     agentMentions?: Array<{ name: string; source?: { value: string; start: number; end: number } }>
     metadata?: Metadata
     delivery?: SessionInboxDelivery
@@ -1131,7 +1135,7 @@ class OpencodeService {
     const prompt = (skills: readonly SkillAttachmentRef[]) => {
       this.assertRuntimeUnchanged(params.runtimeKey)
       return call("session.prompt", () =>
-        this.clientFor(params.directory).session.prompt({
+        this.clientFor(params.directory, params.sendRequest).session.prompt({
           sessionID: params.id,
           id: messageId,
           text: params.text,
@@ -1190,6 +1194,7 @@ class OpencodeService {
     arguments?: string
     files?: Array<FileInputLite>
     context?: SyntheticContextInput[]
+    sendRequest?: (request: Request) => Promise<Response>
     delivery?: SessionInboxDelivery
     directory?: string | null
   }): Promise<void> {
@@ -1213,7 +1218,7 @@ class OpencodeService {
     }
     this.assertRuntimeUnchanged(params.runtimeKey)
     await call("session.command", () =>
-      this.clientFor(params.directory).session.command({
+      this.clientFor(params.directory, params.sendRequest).session.command({
         sessionID: params.id,
         name: params.command,
         text: params.arguments ?? "",

@@ -1834,7 +1834,7 @@ export async function optimisticSend(input: {
   context?: SyntheticContextInput[]
   appendSubmissions?: () => void
   onOptimisticInsert?: () => void
-  onMessageID?: (messageID: string) => void
+  onMessageID?: (messageID: string) => void | Promise<void>
   beforeOptimisticInsert?: () => void
   /**
    * The actual API call. Receives the optimistic message id and the context
@@ -1857,6 +1857,14 @@ export async function optimisticSend(input: {
 
   assertRuntimeUnchanged()
   await waitForConnectionOrThrow()
+  // Context must be admitted before the prompt; bind the prompt ID before
+  // any optimistic state or upstream request can change.
+  const context = (input.context ?? [])
+    .filter((item) => item.text.trim())
+    .map((item) => ({ ...item, id: ascendingId("msg") }))
+  const messageID = ascendingId("msg")
+  await input.onMessageID?.(messageID)
+  const optimisticIDs = [...context.map((item) => item.id), messageID]
   input.beforeOptimisticInsert?.()
   assertRuntimeUnchanged()
   input.appendSubmissions?.()
@@ -1896,14 +1904,6 @@ export async function optimisticSend(input: {
     }
   }
 
-  // Context ids come first so they sort before the prompt the way the server
-  // admits them. The client skips blank items, so they get no record here.
-  const context = (input.context ?? [])
-    .filter((item) => item.text.trim())
-    .map((item) => ({ ...item, id: ascendingId("msg") }))
-  const messageID = ascendingId("msg")
-  input.onMessageID?.(messageID)
-  const optimisticIDs = [...context.map((item) => item.id), messageID]
 
   // Part ids follow `partIds`, the same derivation the projection uses for the
   // server's echo of this message. Identical ids let the echo reconcile in
