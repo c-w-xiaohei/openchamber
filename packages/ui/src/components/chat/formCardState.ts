@@ -9,6 +9,7 @@
  */
 
 import type { FormField, FormValue } from '@opencode/client';
+import type { FormFieldDraft } from '@/sync/form-submission-state';
 
 /**
  * The value a field currently holds in the card.
@@ -19,14 +20,7 @@ import type { FormField, FormValue } from '@opencode/client';
  * a reply only when every external field answers `true`, so it records that
  * the user has seen the step with the link.
  */
-export type FieldValue = {
-    text: string;
-    number: number | null;
-    boolean: boolean;
-    selected: string[];
-    custom: boolean;
-    acknowledged: boolean;
-};
+export type FieldValue = FormFieldDraft;
 
 export type FormValues = Record<string, FieldValue>;
 

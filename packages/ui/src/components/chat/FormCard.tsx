@@ -11,6 +11,8 @@ import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useSessions } from '@/sync/sync-context';
 import * as sessionActions from '@/sync/session-actions';
+import { formSubmissionKey, useFormSubmissionStore } from '@/sync/form-submission-state';
+import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useI18n } from '@/lib/i18n';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { serializeFormAsJson, serializeFormAsMarkdown } from './formSerializers';
@@ -41,7 +43,7 @@ interface FormCardProps {
 export const FormCard: React.FC<FormCardProps> = ({ form }) => {
     const webSearchConsent = readWebSearchConsent(form);
     if (webSearchConsent) return <WebSearchConsentCard form={form} consent={webSearchConsent} />;
-    return <GenericFormCard form={form} />;
+    return <GenericFormCard key={`${getRuntimeKey()}:${form.sessionID}:${form.id}`} form={form} />;
 };
 
 const GenericFormCard: React.FC<FormCardProps> = ({ form }) => {
@@ -57,10 +59,17 @@ const GenericFormCard: React.FC<FormCardProps> = ({ form }) => {
     }, [form.sessionID, currentSessionId, sessions]);
 
     const fields = form.fields;
+    const fieldsSignature = fields.map((field) => `${field.key}:${field.type}`).join('|');
+    const runtimeKey = getRuntimeKey();
+    const identity = React.useMemo(() => ({ runtimeKey, sessionID: form.sessionID, requestID: form.id }), [runtimeKey, form.sessionID, form.id]);
+    const key = formSubmissionKey(identity);
+    const isResponding = useFormSubmissionStore((state) => state.submissions.get(key)?.pending ?? false);
     // The card shows every field at once, so an external link is on screen
     // from the start and its acknowledgement travels with the reply.
-    const [values, setValues] = React.useState<FormValues>(() => initialFormValues(fields, { acknowledgeExternal: true }));
-    const [isResponding, setIsResponding] = React.useState(false);
+    const [values, setValues] = React.useState<FormValues>(() => {
+        const draft = useFormSubmissionStore.getState().submissions.get(key);
+        return draft?.fieldsSignature === fieldsSignature ? draft.values : initialFormValues(fields, { acknowledgeExternal: true });
+    });
     const [hasResponded, setHasResponded] = React.useState(false);
     const [showErrors, setShowErrors] = React.useState(false);
 
@@ -69,13 +78,20 @@ const GenericFormCard: React.FC<FormCardProps> = ({ form }) => {
     // fields array changes identity without changing content. Resetting on
     // identity threw away half-filled answers; only a different form, or a
     // form whose fields actually changed, starts over.
-    const fieldsSignature = fields.map((field) => `${field.key}:${field.type}`).join('|');
+    const appliedSignatureRef = React.useRef(fieldsSignature);
     React.useEffect(() => {
+        if (appliedSignatureRef.current === fieldsSignature) return;
+        appliedSignatureRef.current = fieldsSignature;
         setValues(initialFormValues(fields, { acknowledgeExternal: true }));
         setHasResponded(false);
         setShowErrors(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fieldsSignature, form.id]);
+
+    React.useEffect(() => {
+        if (appliedSignatureRef.current !== fieldsSignature || hasResponded) return;
+        useFormSubmissionStore.getState().save(identity, { fieldsSignature, values, step: 0 });
+    }, [fieldsSignature, hasResponded, identity, values]);
 
     const shown = React.useMemo(() => visibleFields(fields, values), [fields, values]);
     const missing = React.useMemo(() => missingRequiredKeys(fields, values), [fields, values]);
@@ -86,32 +102,33 @@ const GenericFormCard: React.FC<FormCardProps> = ({ form }) => {
     }, []);
 
     const handleSubmit = React.useCallback(async () => {
+        if (useFormSubmissionStore.getState().submissions.get(key)?.pending) return;
         if (!canSubmit) {
             setShowErrors(true);
             return;
         }
-        setIsResponding(true);
+        if (!useFormSubmissionStore.getState().begin(identity, { fieldsSignature, values, step: 0 })) return;
         try {
             await sessionActions.replyToForm(form.sessionID, form.id, buildFormAnswer(fields, values));
             setHasResponded(true);
         } catch {
             toast.error(t('chat.formCard.submitFailed'), { description: t('chat.formCard.tryAgain') });
         } finally {
-            setIsResponding(false);
+            useFormSubmissionStore.getState().release(identity);
         }
-    }, [canSubmit, fields, form.id, form.sessionID, t, values]);
+    }, [canSubmit, fields, fieldsSignature, form.id, form.sessionID, identity, key, t, values]);
 
     const handleCancel = React.useCallback(async () => {
-        setIsResponding(true);
+        if (!useFormSubmissionStore.getState().begin(identity, { fieldsSignature, values, step: 0 })) return;
         try {
             await sessionActions.cancelForm(form.sessionID, form.id);
             setHasResponded(true);
         } catch {
             toast.error(t('chat.formCard.cancelFailed'), { description: t('chat.formCard.tryAgain') });
         } finally {
-            setIsResponding(false);
+            useFormSubmissionStore.getState().release(identity);
         }
-    }, [form.id, form.sessionID, t]);
+    }, [fieldsSignature, form.id, form.sessionID, identity, t, values]);
 
     const handleKeyDown = React.useCallback(
         (event: React.KeyboardEvent<HTMLTextAreaElement>) => {

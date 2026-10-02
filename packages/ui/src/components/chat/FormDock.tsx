@@ -13,6 +13,8 @@ import { readWebSearchConsent } from '@/lib/opencode/websearch';
 import { useUIStore } from '@/stores/useUIStore';
 import { useScopedBlockingForms, useSessions } from '@/sync/sync-context';
 import * as sessionActions from '@/sync/session-actions';
+import { formSubmissionKey, useFormSubmissionStore } from '@/sync/form-submission-state';
+import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useMobileAutocompleteMaxHeight } from './useMobileAutocompleteMaxHeight';
 import { FormFieldControl } from './FormFieldControl';
 import { WebSearchConsentDock } from './WebSearchConsent';
@@ -64,24 +66,7 @@ export const FormDock: React.FC<FormDockProps> = ({ sessionId, directory, hidden
     const webSearchConsent = readWebSearchConsent(form);
     if (webSearchConsent) return <WebSearchConsentDock key={form.id} form={form} consent={webSearchConsent} />;
     // Keyed on the form id so a different request starts from a clean slate.
-    return <FormDockPanel key={form.id} form={form} waiting={forms.length - 1} />;
-};
-
-type FormDraft = { fieldsSignature: string; values: FormValues; step: number };
-
-// Answers in progress outlive the panel: switching sessions unmounts it, and
-// coming back must find the form where it was left. Kept in memory only and
-// dropped once the form is answered or dismissed.
-const formDrafts = new Map<string, FormDraft>();
-const MAX_FORM_DRAFTS = 50;
-
-const saveFormDraft = (formId: string, draft: FormDraft) => {
-    formDrafts.delete(formId);
-    formDrafts.set(formId, draft);
-    if (formDrafts.size > MAX_FORM_DRAFTS) {
-        const oldest = formDrafts.keys().next().value;
-        if (oldest !== undefined) formDrafts.delete(oldest);
-    }
+    return <FormDockPanel key={`${getRuntimeKey()}:${form.sessionID}:${form.id}`} form={form} waiting={forms.length - 1} />;
 };
 
 const isStepAnswered = (field: FormField, values: FormValues): boolean => {
@@ -101,14 +86,17 @@ const FormDockPanel: React.FC<{ form: FormRequest; waiting: number }> = ({ form,
     // A rebuilt pending list hands over a new object with the same content;
     // only fields that actually changed start the answers over.
     const fieldsSignature = fields.map((field) => `${field.key}:${field.type}`).join('|');
+    const runtimeKey = getRuntimeKey();
+    const identity = React.useMemo(() => ({ runtimeKey, sessionID: form.sessionID, requestID: form.id }), [runtimeKey, form.sessionID, form.id]);
+    const key = formSubmissionKey(identity);
+    const isResponding = useFormSubmissionStore((state) => state.submissions.get(key)?.pending ?? false);
     const [restored] = React.useState(() => {
-        const draft = formDrafts.get(form.id);
+        const draft = useFormSubmissionStore.getState().submissions.get(key);
         return draft?.fieldsSignature === fieldsSignature ? draft : null;
     });
     const [values, setValues] = React.useState<FormValues>(() => restored?.values ?? initialFormValues(fields));
     const [step, setStep] = React.useState(restored?.step ?? 0);
     const [collapsed, setCollapsed] = React.useState(false);
-    const [isResponding, setIsResponding] = React.useState(false);
     const [showErrors, setShowErrors] = React.useState(false);
 
     const appliedSignatureRef = React.useRef(fieldsSignature);
@@ -123,8 +111,8 @@ const FormDockPanel: React.FC<{ form: FormRequest; waiting: number }> = ({ form,
 
     React.useEffect(() => {
         if (appliedSignatureRef.current !== fieldsSignature) return;
-        saveFormDraft(form.id, { fieldsSignature, values, step });
-    }, [fieldsSignature, form.id, step, values]);
+        useFormSubmissionStore.getState().save(identity, { fieldsSignature, values, step });
+    }, [fieldsSignature, identity, step, values]);
 
     const isFromSubagent = React.useMemo(() => {
         const source = sessions.find((session) => session.id === form.sessionID);
@@ -165,6 +153,7 @@ const FormDockPanel: React.FC<{ form: FormRequest; waiting: number }> = ({ form,
     }, [currentFieldIsExternal, currentFieldKey]);
 
     const handleSubmit = React.useCallback(async () => {
+        if (useFormSubmissionStore.getState().submissions.get(key)?.pending) return;
         if (!canSubmit) {
             // Jump to the first question that still needs an answer.
             setShowErrors(true);
@@ -172,28 +161,26 @@ const FormDockPanel: React.FC<{ form: FormRequest; waiting: number }> = ({ form,
             if (firstMissing >= 0) setStep(firstMissing);
             return;
         }
-        setIsResponding(true);
+        if (!useFormSubmissionStore.getState().begin(identity, { fieldsSignature, values, step })) return;
         try {
             await sessionActions.replyToForm(form.sessionID, form.id, buildFormAnswer(fields, values));
-            formDrafts.delete(form.id);
         } catch {
             toast.error(t('chat.formCard.submitFailed'), { description: t('chat.formCard.tryAgain') });
         } finally {
-            setIsResponding(false);
+            useFormSubmissionStore.getState().release(identity);
         }
-    }, [canSubmit, fields, form.id, form.sessionID, missing, shown, t, values]);
+    }, [canSubmit, fields, fieldsSignature, form.id, form.sessionID, identity, key, missing, shown, step, t, values]);
 
     const handleDismiss = React.useCallback(async () => {
-        setIsResponding(true);
+        if (!useFormSubmissionStore.getState().begin(identity, { fieldsSignature, values, step })) return;
         try {
             await sessionActions.cancelForm(form.sessionID, form.id);
-            formDrafts.delete(form.id);
         } catch {
             toast.error(t('chat.formCard.cancelFailed'), { description: t('chat.formCard.tryAgain') });
         } finally {
-            setIsResponding(false);
+            useFormSubmissionStore.getState().release(identity);
         }
-    }, [form.id, form.sessionID, t]);
+    }, [fieldsSignature, form.id, form.sessionID, identity, step, t, values]);
 
     const goNext = React.useCallback(() => {
         setStep(Math.min(currentStep + 1, lastStep));

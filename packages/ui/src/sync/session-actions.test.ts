@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test"
 import type { PermissionRequest } from "@/types/permission"
 import type { FormRequest } from "@/lib/opencode/model"
 import type { InputState } from "./input-store"
+import { formSubmissionKey, useFormSubmissionStore } from "./form-submission-state"
 
 // Records the client calls the actions make. The actions talk to
 // `opencodeClient` only: OpenCode's own SDK never reaches this layer.
@@ -2530,7 +2531,30 @@ describe("form dismissal clears pending state without the SSE echo (issues #2911
     replyCalls.length = 0
     formReplyError = null
     formCancelError = null
+    useFormSubmissionStore.setState({ submissions: new Map() })
   })
+
+  for (const operation of ["reply", "cancel"]) {
+    test(`${operation} fences a runtime switch during the connection wait`, async () => {
+      const form = buildForm("q-1", "session-a")
+      const store = createStore({}, { session: [sessionFixture("session-a")], form: { "session-a": [form] } })
+      const { setActionRefs, replyToForm, cancelForm } = await import("./session-actions")
+      setActionRefs(createChildStores([["/test/project", store]]), () => "/test/project")
+      runtimeKey = "form-runtime-a"
+      const oldIdentity = { runtimeKey, sessionID: "session-a", requestID: "q-1" }
+      const newIdentity = { ...oldIdentity, runtimeKey: "form-runtime-b" }
+      const draft = { fieldsSignature: "choice:boolean", values: {}, step: 0 }
+      useFormSubmissionStore.getState().begin(oldIdentity, draft)
+      useFormSubmissionStore.getState().begin(newIdentity, draft)
+      const pending = operation === "reply" ? replyToForm("session-a", "q-1", { choice: true }) : cancelForm("session-a", "q-1")
+      runtimeKey = "form-runtime-b"
+      await expect(pending).rejects.toThrow("runtime changed")
+      expect(replyCalls).toEqual([])
+      expect(store.getState().form["session-a"]).toEqual([form])
+      expect(useFormSubmissionStore.getState().submissions.get(formSubmissionKey(oldIdentity))?.pending).toBe(false)
+      expect(useFormSubmissionStore.getState().submissions.get(formSubmissionKey(newIdentity))?.pending).toBe(true)
+    })
+  }
 
   test("cancelForm clears the form from the child store on success", async () => {
     const form = buildForm("q-1", "session-a")
@@ -2563,9 +2587,12 @@ describe("form dismissal clears pending state without the SSE echo (issues #2911
     const { setActionRefs, replyToForm } = await import("./session-actions")
     setActionRefs(childStores, () => "/test/project")
 
+    const identity = { runtimeKey, sessionID: "session-a", requestID: "q-1" }
+    useFormSubmissionStore.getState().begin(identity, { fieldsSignature: "choice:boolean", values: {}, step: 0 })
     await replyToForm("session-a", "q-1", { choice: true })
 
     expect(store.getState().form["session-a"]).toBe(undefined)
+    expect(useFormSubmissionStore.getState().submissions.has(formSubmissionKey(identity))).toBe(false)
   })
 
   test("dismissOpenFormsForSession leaves the store cleared when the reject succeeds", async () => {

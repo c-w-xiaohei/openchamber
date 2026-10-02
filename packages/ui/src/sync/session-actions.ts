@@ -14,6 +14,7 @@ import { computeSubtreeIds } from "./scoped-blocking-requests"
 import { opencodeClient, type SyntheticContextInput } from "@/lib/opencode/client"
 import { toJsonRecord } from "@/lib/opencode/json"
 import { ascendingId } from "@/lib/opencode/ids"
+import { useFormSubmissionStore } from "./form-submission-state"
 import { mergeSessionDirectoryMetadata, resolveGlobalSessionDirectory, useGlobalSessionsStore } from "@/stores/useGlobalSessionsStore"
 import { useConfigStore } from "@/stores/useConfigStore"
 import { registerSessionDirectory } from "./sync-refs"
@@ -2242,14 +2243,21 @@ export async function dismissOpenPermissionsForSession(sessionId: string): Promi
 /** One filled-in form: every field the agent declared, keyed by field key. */
 export type FormAnswer = Record<string, string | number | boolean | string[]>
 
+function assertFormRuntime(runtimeKey: string): void {
+  if (isStaleRuntime(runtimeKey)) throw new Error("runtime changed")
+}
+
 export async function replyToForm(
   sessionId: string,
   formId: string,
   answer: FormAnswer,
 ): Promise<void> {
-  await waitForConnectionOrThrow()
-  const directory = getRequestReplyDirectory("form", sessionId, formId)
+  const runtimeKey = getRuntimeKey()
+  const identity = { runtimeKey, sessionID: sessionId, requestID: formId }
   try {
+    await waitForConnectionOrThrow()
+    assertFormRuntime(runtimeKey)
+    const directory = getRequestReplyDirectory("form", sessionId, formId)
     if (await opencodeClient.replyToForm(sessionId, formId, answer, directory) !== true) {
       throw new Error("Form reply failed")
     }
@@ -2260,32 +2268,47 @@ export async function replyToForm(
     // the next task's thinking and final response never render (issues #2911,
     // #2448). The later SSE event is a no-op (the reducer only removes when
     // present).
+    assertFormRuntime(runtimeKey)
+    useFormSubmissionStore.getState().clear(identity)
     removeFormRequestFromChildStores(sessionId, formId)
   } catch (error) {
+    assertFormRuntime(runtimeKey)
     if (isFormRequestNotFoundError(error)) {
+      useFormSubmissionStore.getState().clear(identity)
       removeFormRequestFromChildStores(sessionId, formId)
       recoverStaleBlockingRequest(sessionId)
     }
     throw error
+  } finally {
+    useFormSubmissionStore.getState().release(identity)
   }
 }
 
 export async function cancelForm(sessionId: string, formId: string): Promise<void> {
-  await waitForConnectionOrThrow()
-  const directory = getRequestReplyDirectory("form", sessionId, formId)
+  const runtimeKey = getRuntimeKey()
+  const identity = { runtimeKey, sessionID: sessionId, requestID: formId }
   try {
+    await waitForConnectionOrThrow()
+    assertFormRuntime(runtimeKey)
+    const directory = getRequestReplyDirectory("form", sessionId, formId)
     if (await opencodeClient.cancelForm(sessionId, formId, directory) !== true) {
       throw new Error("Form cancellation failed")
     }
     // A successful cancellation is authoritative; see replyToForm for the
     // lost-SSE-event rationale (issues #2911, #2448).
+    assertFormRuntime(runtimeKey)
+    useFormSubmissionStore.getState().clear(identity)
     removeFormRequestFromChildStores(sessionId, formId)
   } catch (error) {
+    assertFormRuntime(runtimeKey)
     if (isFormRequestNotFoundError(error)) {
+      useFormSubmissionStore.getState().clear(identity)
       removeFormRequestFromChildStores(sessionId, formId)
       recoverStaleBlockingRequest(sessionId)
     }
     throw error
+  } finally {
+    useFormSubmissionStore.getState().release(identity)
   }
 }
 

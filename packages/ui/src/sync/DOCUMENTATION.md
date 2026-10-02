@@ -440,6 +440,17 @@ Imperative cross-directory session lookups use the cached ID index from `getAllS
 
 VS Code does not run the server permission-auto-accept runtime. The extension host persists and broadcasts authoritative policy, while its foreground UI runtime resolves missing child-session lineage through the OpenCode API before deciding whether to suppress and answer a `permission.asked` event. Once policy is enabled, a live `permission.asked` event sends the directory-scoped `permission.reply` immediately and does not block on a permission-state preflight request. Enabling the policy treats permission cards already present in the directory store the same way and replies immediately, then reconciles the server's pending list by replying to listed requests directly without a permission-state preflight: `permission.list` is served by the V1 pending map while the state check reads the separate V2 map, so a preflight "resolved" verdict cannot prove a listed request settled. Reconnect/bootstrap reconciles pending requests in the session directory the same way, including requests inherited by child sessions. Unknown lineage and exhausted reply retries fail closed and leave the request available for manual action. A later `permission.replied` event invalidates any older deferred ask so the async policy check cannot resurrect a resolved request. With every OpenChamber webview closed or suspended no responder runs; this is an intentional VS Code limitation. Other runtimes remain fully server-owned.
 
+### Form submission drafts
+
+`form-submission-state.ts` owns the in-memory field drafts and submission lock
+shared by FormDock and the inline FormCard. Runtime, session, and request identify
+the owner. Exact text, select/custom state, external acknowledgements, and the dock
+step survive remounts. Pending drafts are immutable and cannot be evicted by the
+50-entry draft retention limit. Child-store `form` records remain authoritative.
+Successful reply/cancel, not-found cleanup, or a matching `form.settled` event clears
+only its owner's draft. Failure releases the lock without discarding answers.
+Actions fence runtime changes before dispatch and before applying the response.
+
 ### Mutation responsibility
 
 `useGlobalSessionsStore` is kept correct by:

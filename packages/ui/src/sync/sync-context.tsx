@@ -46,6 +46,7 @@ import { runBackgroundNetworkTask } from "@/lib/background-network"
 import { recordDirectoryRecoveryEvent } from "./directory-recovery-snapshots"
 import { setActionRefs } from "./session-actions"
 import { setSyncRefs, getAllSyncSessions, emitSyncConfigChanged, getDirectoryState } from "./sync-refs"
+import { useFormSubmissionStore } from "./form-submission-state"
 import { useSessionUIStore } from "./session-ui-store"
 import { stripSessionDiffSnapshots } from "./sanitize"
 import { upsertSessionRecord } from "./session-records"
@@ -1886,6 +1887,7 @@ export function handleEvent(
 
   if (payload.type === "form.settled") {
     const { sessionID, formID } = payload.properties
+    useFormSubmissionStore.getState().clear({ runtimeKey: expectedRuntimeKey, sessionID, requestID: formID })
     const toastKey = getFormToastKey(sessionID, formID)
     if (toastKey) {
       pendingFormToastIds.delete(toastKey)
