@@ -51,6 +51,7 @@ import { isSessionBusyNow } from '@/sync/session-actions';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { isSessionInWork } from '@/lib/sessionWorkMetadata';
 import { useOpenProjectOnBoard } from '@/components/sourceBoard/openTrackerItem';
+import { useProjectsInSidebarOrder } from '../list/useProjectsInSidebarOrder';
 
 type SessionProjectScrollerState = Pick<SessionGroupSectionProps,
   | 'editingId'
@@ -161,15 +162,17 @@ function SessionProjectScrollerComponent({ model, view, actions }: Props): React
     setScrollElement(element);
   }, []);
 
-  const projectPickerOptions = React.useMemo(() => model.projectSections.map((section) => ({
-    id: section.project.id,
-    projectLabel: getProjectLabel(section.project, view.homeDirectory),
-    projectDescription: formatPathForDisplay(section.project.normalizedPath, view.homeDirectory),
-    projectIcon: section.project.icon,
-    projectColor: section.project.color,
-    projectIconImage: section.project.iconImage,
-    projectIconBackground: section.project.iconBackground,
-  })), [model.projectSections, view.homeDirectory]);
+  const projectPickerProjects = React.useMemo(() => model.projectSections.map((section) => section.project), [model.projectSections]);
+  const orderedPickerProjects = useProjectsInSidebarOrder(projectPickerProjects, model.singleProjectMode);
+  const projectPickerOptions = React.useMemo(() => orderedPickerProjects.map((project) => ({
+    id: project.id,
+    projectLabel: getProjectLabel(project, view.homeDirectory),
+    projectDescription: formatPathForDisplay(project.normalizedPath, view.homeDirectory),
+    projectIcon: project.icon,
+    projectColor: project.color,
+    projectIconImage: project.iconImage,
+    projectIconBackground: project.iconBackground,
+  })), [orderedPickerProjects, view.homeDirectory]);
 
   const archiveAllConfirm = useConfirmDialog();
   const { confirm: confirmArchiveAll } = archiveAllConfirm;

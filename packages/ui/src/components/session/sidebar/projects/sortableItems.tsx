@@ -338,27 +338,25 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
                     <button
                       type="button"
                       className={cn(
-                        'flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        // Reserve hover space for the absolute action buttons,
-                        // matching the collapse-toggle branch below.
-                        isRepo && !hideDirectoryControls
-                          ? (alwaysShowActions || isMenuOpen ? 'pe-20' : 'pe-0 group-hover/project:pe-20 group-has-[:focus-visible]/project:pe-20')
-                          : (alwaysShowActions || isMenuOpen ? 'pe-14' : 'pe-0 group-hover/project:pe-14 group-has-[:focus-visible]/project:pe-14'),
+                        '@container flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-start focus-visible:outline-none',
+                        alwaysShowActions
+                          ? (isRepo && !hideDirectoryControls ? 'pe-20' : 'pe-14')
+                          : headerActionsReserveClass,
                       )}
                       aria-label={t('sessions.sidebar.project.selectAria', { project: projectLabel })}
                     >
-                      <ProjectHeaderIdentity id={id} projectLabel={projectLabel} projectIcon={projectIcon} projectColor={projectColor} projectIconImage={projectIconImage} projectIconBackground={projectIconBackground} />
-                      <Icon name="arrow-down-s" className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                      {projectDirectory ? <DirectoryActionIndicator directory={projectDirectory} className="ms-auto" /> : null}
+                      <ProjectHeaderIdentity id={id} projectLabel={projectLabel} projectIcon={projectIcon} projectColor={projectColor} projectIconImage={projectIconImage} projectIconBackground={projectIconBackground} labelClassName={cn('[--oc-actions-inset:20px]', headerLabelMaskClass)} />
+                      <Icon name="arrow-down-s" className={cn('h-3.5 w-3.5 flex-shrink-0 text-muted-foreground', headerCoveredFadeClass)} />
+                      {projectDirectory ? <DirectoryActionIndicator directory={projectDirectory} className={cn('ms-auto', headerCoveredFadeClass)} /> : null}
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="max-h-[70vh] min-w-[220px] overflow-y-auto">
+                  <DropdownMenuContent align="start" className="max-h-[min(360px,var(--available-height))] w-64 max-w-[calc(100vw-16px)] overflow-y-auto">
                     {projectPickerOptions?.map((option) => (
                       <DropdownMenuItem key={option.id} onClick={() => onProjectSelect?.(option.id)} className="flex items-center justify-between gap-3" title={option.projectDescription}>
                         <span className="flex min-w-0 items-center gap-1.5">
                           <ProjectHeaderIdentity {...option} />
                         </span>
-                        {option.id === id ? <Icon name="check" className="h-4 w-4 flex-shrink-0 text-primary" /> : null}
+                        {option.id === id ? <Icon name="check" className="h-4 w-4 flex-shrink-0 text-interactive-selection-foreground" /> : null}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>

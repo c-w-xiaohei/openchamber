@@ -180,9 +180,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
   const setProjectDisplayMode = useSessionDisplayStore((state) => state.setProjectDisplayMode);
   // VS Code has no mode switch and always renders the projects view.
   const timelineView = showProjectDisplayControls && sidebarViewMode === 'timeline';
-  // The timeline always lists every project, so the grouped view's
-  // single-project choice does not apply there.
-  const isSingleProjectMode = showProjectDisplayControls && !timelineView && projectDisplayMode === 'single';
+  const isSingleProjectMode = showProjectDisplayControls && projectDisplayMode === 'single';
 
   // One choice per line, rarely touched orders behind submenus that name the
   // current choice, so the menu stays short: selection first, then the view,
@@ -247,9 +245,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
       ))}
     </>);
   }
-  // The list view keeps projects in the manual order and has no worktree
-  // groups, so it offers its own layout instead; VS Code groups by workspace
-  // only, so it sorts projects alone.
+  // List controls its session grouping; project scope and sort apply to both views.
   if (timelineView) {
     displayMenuSections.push(choiceSubmenu('sessions.sidebar.header.listGrouping.label', [
       ['project', 'sessions.sidebar.header.listGrouping.project'],
@@ -258,35 +254,34 @@ export function SidebarHeader(props: Props): React.ReactNode {
       setListSessionGrouping(grouping);
       void updateDesktopSettings({ sidebarListSessionGrouping: grouping });
     }));
-  } else {
-    displayMenuSections.push(<>
-      {choiceSubmenu('sessions.sidebar.header.actions.sortProjects', [
-        ['manual', 'sessions.sidebar.header.projectSort.manual'],
-        ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
-        ['z-a', 'sessions.sidebar.header.projectSort.zToA'],
-        ['date-added', 'sessions.sidebar.header.projectSort.dateAdded'],
-        ['recent', 'sessions.sidebar.header.projectSort.recent'],
-      ] as const, projectSortOrder, (order) => {
-        setProjectSortOrder(order);
-        void updateDesktopSettings({ sidebarProjectSortOrder: order });
-      })}
-      {showProjectDisplayControls ? choiceSubmenu('sessions.sidebar.header.actions.sortWorktrees', [
-        ['recent', 'sessions.sidebar.header.worktreeSort.recent'],
-        ['manual', 'sessions.sidebar.header.projectSort.manual'],
-        ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
-      ] as const, worktreeSortOrder, (order) => {
-        setWorktreeSortOrder(order);
-        void updateDesktopSettings({ sidebarWorktreeSortOrder: order });
-      }) : null}
-      {showProjectDisplayControls ? choiceSubmenu('sessions.sidebar.header.projectDisplay.label', [
-        ['all', 'sessions.sidebar.header.projectDisplay.all'],
-        ['single', 'sessions.sidebar.header.projectDisplay.single'],
-      ] as const, projectDisplayMode, (mode) => {
-        setProjectDisplayMode(mode);
-        void updateDesktopSettings({ sidebarProjectDisplayMode: mode });
-      }) : null}
-    </>);
   }
+  displayMenuSections.push(<>
+    {choiceSubmenu('sessions.sidebar.header.actions.sortProjects', [
+      ['manual', 'sessions.sidebar.header.projectSort.manual'],
+      ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
+      ['z-a', 'sessions.sidebar.header.projectSort.zToA'],
+      ['date-added', 'sessions.sidebar.header.projectSort.dateAdded'],
+      ['recent', 'sessions.sidebar.header.projectSort.recent'],
+    ] as const, projectSortOrder, (order) => {
+      setProjectSortOrder(order);
+      void updateDesktopSettings({ sidebarProjectSortOrder: order });
+    })}
+    {showProjectDisplayControls && !timelineView ? choiceSubmenu('sessions.sidebar.header.actions.sortWorktrees', [
+      ['recent', 'sessions.sidebar.header.worktreeSort.recent'],
+      ['manual', 'sessions.sidebar.header.projectSort.manual'],
+      ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
+    ] as const, worktreeSortOrder, (order) => {
+      setWorktreeSortOrder(order);
+      void updateDesktopSettings({ sidebarWorktreeSortOrder: order });
+    }) : null}
+    {showProjectDisplayControls ? choiceSubmenu('sessions.sidebar.header.projectDisplay.label', [
+      ['all', 'sessions.sidebar.header.projectDisplay.all'],
+      ['single', 'sessions.sidebar.header.projectDisplay.single'],
+    ] as const, projectDisplayMode, (mode) => {
+      setProjectDisplayMode(mode);
+      void updateDesktopSettings({ sidebarProjectDisplayMode: mode });
+    }) : null}
+  </>);
   if (showSectionControls) {
     displayMenuSections.push(<>
       {toggleItem('sessions.sidebar.header.displayMode.showChats', showChatsSection, () => {

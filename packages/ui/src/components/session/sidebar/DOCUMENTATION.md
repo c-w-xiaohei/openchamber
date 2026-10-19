@@ -91,7 +91,10 @@ no Recent zone any more (removed 2026-10): In work holds the sessions being
 worked on, and the List view sorted by time answers "what was I doing" across
 projects. Chats use
 their shared managed root for folders and never expose worktree actions. Project
-display can be all projects or one selected project. The mobile sessions sheet
+display can be all projects or one selected project in both Tree and List;
+Chats, Pinned and In work keep their global scope. A single-project List keeps
+the selected project's picker even when empty or searched, in both session
+groupings, and ignores saved project collapse state. The mobile sessions sheet
 (`apps/MobileSessionsSheet.tsx`) partitions the same way through
 `partitionSidebarSessions` and lists Chats as a collapsible section above the
 project tree. Its header has no title: close, Add project, the display menu
@@ -105,8 +108,8 @@ held while the drawer closes). A session of an isolated space has the space's
 name where the branch goes and `inSpace` set on its location, so the timeline
 and In work rows of the desktop and the phone mark it with the container icon
 the space's group carries, never with the branch icon. The phone's timeline
-(`apps/MobileTimelineList.tsx` rows, built by the sheet) mirrors the desktop:
-manual project order with reordering, one header per project over its root
+(`apps/MobileTimelineList.tsx` rows, built by the sheet) keeps manual project
+order with reordering, one header per project over its root
 sessions from every worktree and space, 7 at a time with Show more / Show
 fewer (collapsing a project resets it), two-line rows with a fixed-height
 second line, and the project's icon on that line in In work. Sorted by time
@@ -159,8 +162,8 @@ Every other list of projects shows them in the sidebar's order through
 selector of the Settings pages, the composer's project picker until a search
 is typed, the move-chat, scheduled tasks and install-skill pickers, the
 Linear mapping, usage stats and the issues board. It applies the same
-`sortProjectsByOrder`, keeps the manual order while the sidebar shows the List
-view, and for `recent` ranks by `rankByLatestActivity` with the sidebar's
+`sortProjectsByOrder` in both Tree and List, and for `recent` ranks by
+`rankByLatestActivity` with the sidebar's
 ownership rules over the global session list, archived sessions included; a
 live session the global list has not picked up yet counts once it does. It
 reads sessions and spaces only in `recent` and only while its list is shown
@@ -377,15 +380,15 @@ all / Expand all.
   header per project followed by that project's non-archived root sessions
   from every worktree and space, in the shared lifecycle order with pinned
   sessions first; with the Pinned zone shown, its sessions are listed there
-  only. Projects keep the manual order whatever the stored project
-  sort: dragging a header is the timeline's only sort, and the display menu
-  hides both sort sections. A project reveals 7 sessions, 7 more per Show more
+  only. Project sorting and the all-projects/single-project choice apply in
+  both Tree and List. Worktree sorting remains Tree-only. A project reveals
+  7 sessions, 7 more per Show more
   (`timelineProjectContainerKey`); collapsing it, from its header or Collapse
   all, forgets that state, so expanding starts from 7 again. A project without
   sessions shows its load status, or nothing under its header.
 - Sorted by time (`listSessionGrouping`, `sidebarListSessionGrouping`, per
   surface, by project by default; the display menu's Sessions submenu, List
-  only), the project headers give way to one `timeline` zone titled Projects:
+  only), all-projects mode replaces project headers with one `timeline` zone titled Projects:
   every project's non-archived root sessions in the shared lifecycle order,
   pinned first, as `renderContext: 'timeline-by-time'` rows; Pinned and In
   work take the same three-line rows above it, on the phone too, so the zones
@@ -395,7 +398,8 @@ all / Expand all.
   the list holds them too. Without project headers to carry load status, the
   list ends with the statuses a project header would show, for projects it
   lists nothing for: one loading line while any of them loads and one line
-  per failed directory. Spaces without chats, which have no session row, show only
+  per failed directory. Single-project mode keeps its project header as the
+  picker above the same time-ordered rows and that project's status. Spaces without chats, which have no session row, show only
   when sorted by project. This is the cross-project list the pre-2.3.0
   Timeline view had (issue #5005), kept beside the per-project layout.
 - An isolated space without chats has no session row, so its group header,
