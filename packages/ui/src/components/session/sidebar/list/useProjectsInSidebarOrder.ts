@@ -22,7 +22,8 @@ const NO_OPENCODE_PROJECTS: OpenCodeProject[] = [];
 
 /**
  * `items` in the order the sidebar shows the projects: its project sort
- * (Manual, A to Z, Z to A, Newest, Recent) in either view. Entries that are not
+ * (Manual, A to Z, Z to A, Newest, Recent), or the manual order while the
+ * sidebar is in the List view, which always keeps it. Entries that are not
  * registered projects, such as the composer's Chat target, stay ahead in their
  * incoming order.
  *
@@ -39,7 +40,10 @@ export const useProjectsInSidebarOrder = <T extends { id: string }>(
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   const projects = useProjectsStore((state) => (enabled ? state.projects : NO_PROJECTS));
   const manualOrder = useProjectsStore((state) => (enabled ? state.manualProjectOrder : NO_IDS));
-  const order = useSessionDisplayStore((state) => state.projectSortOrder);
+  const storedOrder = useSessionDisplayStore((state) => state.projectSortOrder);
+  // VS Code has no List view; elsewhere List keeps the manual order, as the sidebar does.
+  const listView = useSessionDisplayStore((state) => !isVSCode && state.sidebarViewMode === 'timeline');
+  const order = listView ? 'manual' : storedOrder;
   const recent = enabled && order === 'recent';
   const sessions = useGlobalSessionsStore((state) => (recent ? state.activeSessions : NO_SESSIONS));
   // Archived sessions can tie an OpenCode project to a registered one, as in the sidebar's index.

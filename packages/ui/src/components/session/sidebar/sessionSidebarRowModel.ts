@@ -845,7 +845,7 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
       }
     }
   } else if (timelineMode) {
-    // One header per project, in the selected project order, over its root
+    // One header per project, in the user's manual order, over its root
     // sessions from every worktree in lifecycle order. By time, both zones'
     // sessions stay out; by project, only Pinned stays out.
     const excludedZoneIds = timeList ? inZone : new Set((args.pinnedItems ?? []).map((item) => item.node.session.id));

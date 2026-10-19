@@ -245,7 +245,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
       ))}
     </>);
   }
-  // List controls its session grouping; project scope and sort apply to both views.
+  // Project scope applies to both views; List keeps manual project order.
   if (timelineView) {
     displayMenuSections.push(choiceSubmenu('sessions.sidebar.header.listGrouping.label', [
       ['project', 'sessions.sidebar.header.listGrouping.project'],
@@ -256,7 +256,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
     }));
   }
   displayMenuSections.push(<>
-    {choiceSubmenu('sessions.sidebar.header.actions.sortProjects', [
+    {!timelineView ? choiceSubmenu('sessions.sidebar.header.actions.sortProjects', [
       ['manual', 'sessions.sidebar.header.projectSort.manual'],
       ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
       ['z-a', 'sessions.sidebar.header.projectSort.zToA'],
@@ -265,7 +265,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
     ] as const, projectSortOrder, (order) => {
       setProjectSortOrder(order);
       void updateDesktopSettings({ sidebarProjectSortOrder: order });
-    })}
+    }) : null}
     {showProjectDisplayControls && !timelineView ? choiceSubmenu('sessions.sidebar.header.actions.sortWorktrees', [
       ['recent', 'sessions.sidebar.header.worktreeSort.recent'],
       ['manual', 'sessions.sidebar.header.projectSort.manual'],

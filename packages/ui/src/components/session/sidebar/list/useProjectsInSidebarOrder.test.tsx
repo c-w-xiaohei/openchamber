@@ -79,10 +79,10 @@ describe('useProjectsInSidebarOrder', () => {
     }
   });
 
-  test('uses the selected project sort in List too', async () => {
+  test('keeps the manual order while the sidebar shows the List view, as the sidebar does', async () => {
     useSessionDisplayStore.setState({ sidebarViewMode: 'timeline', projectSortOrder: 'a-z' });
     await act(async () => root.render(<Harness items={projects} />));
-    expect(shown).toEqual(['alpha', 'bravo', 'charlie', 'delta']);
+    expect(shown).toEqual(['delta', 'bravo', 'charlie', 'alpha']);
   });
 
   test('Recent ranks by the newest session in each project, worktrees included by path', async () => {

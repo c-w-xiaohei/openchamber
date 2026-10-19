@@ -108,8 +108,8 @@ held while the drawer closes). A session of an isolated space has the space's
 name where the branch goes and `inSpace` set on its location, so the timeline
 and In work rows of the desktop and the phone mark it with the container icon
 the space's group carries, never with the branch icon. The phone's timeline
-(`apps/MobileTimelineList.tsx` rows, built by the sheet) keeps manual project
-order with reordering, one header per project over its root
+(`apps/MobileTimelineList.tsx` rows, built by the sheet) mirrors the desktop:
+manual project order with reordering, one header per project over its root
 sessions from every worktree and space, 7 at a time with Show more / Show
 fewer (collapsing a project resets it), two-line rows with a fixed-height
 second line, and the project's icon on that line in In work. Sorted by time
@@ -162,8 +162,8 @@ Every other list of projects shows them in the sidebar's order through
 selector of the Settings pages, the composer's project picker until a search
 is typed, the move-chat, scheduled tasks and install-skill pickers, the
 Linear mapping, usage stats and the issues board. It applies the same
-`sortProjectsByOrder` in both Tree and List, and for `recent` ranks by
-`rankByLatestActivity` with the sidebar's
+`sortProjectsByOrder`, keeps the manual order while the sidebar shows the List
+view, and for `recent` ranks by `rankByLatestActivity` with the sidebar's
 ownership rules over the global session list, archived sessions included; a
 live session the global list has not picked up yet counts once it does. It
 reads sessions and spaces only in `recent` and only while its list is shown
@@ -380,9 +380,10 @@ all / Expand all.
   header per project followed by that project's non-archived root sessions
   from every worktree and space, in the shared lifecycle order with pinned
   sessions first; with the Pinned zone shown, its sessions are listed there
-  only. Project sorting and the all-projects/single-project choice apply in
-  both Tree and List. Worktree sorting remains Tree-only. A project reveals
-  7 sessions, 7 more per Show more
+  only. Projects keep the manual order whatever the stored project sort:
+  dragging a header is the timeline's only sort, and the display menu hides
+  both sort sections. The all-projects/single-project choice applies in both
+  Tree and List. A project reveals 7 sessions, 7 more per Show more
   (`timelineProjectContainerKey`); collapsing it, from its header or Collapse
   all, forgets that state, so expanding starts from 7 again. A project without
   sessions shows its load status, or nothing under its header.
