@@ -155,6 +155,24 @@ describe('Streamdown math and CJK compatibility', () => {
     expect(result.textContent).toContain('$50M to $72M');
   });
 
+  test('keeps LaTeX emphasis characters inside dollar math (#5303)', () => {
+    const cases = [
+      '- **Example**: a two-factor random-effects ANOVA as an LMM ($\\boldsymbol{b}=(\\boldsymbol{\\alpha},\\boldsymbol{\\beta}_B,\\boldsymbol{\\gamma}_{AB})^\\top$,$G$ block-diagonal)',
+      'variance component estimates $\\hat{\\sigma}_\\beta$ -> $\\hat{\\sigma}^2_\\beta$',
+      '$$\\boldsymbol{b}=(\\boldsymbol{\\alpha},\\boldsymbol{\\beta}_B,\\boldsymbol{\\gamma}_{AB})^\\top$$',
+    ];
+    for (const source of cases) {
+      const result = render(source);
+      expect(result.querySelectorAll('.katex').length).toBeGreaterThan(0);
+      expect(result.querySelector('em')).toBeNull();
+      expect(result.textContent).not.toContain('$\\');
+    }
+    const emphasized = render('**$x_i$** and $a_i < b_i$');
+    expect(emphasized.querySelector('strong .katex')).not.toBeNull();
+    expect(emphasized.querySelectorAll('.katex')).toHaveLength(2);
+    expect(emphasized.querySelector('em')).toBeNull();
+  });
+
   test('preserves formula content and prevents delimiters from crossing Markdown link boundaries', () => {
     const result = render('$x;y$ and $2\\pi r$ and $5 [item](https://example.test/$x$) $10\n\n\\(a+b\\)\n\n\\[\r\nx+y\r\n\\]');
     expect(result.querySelectorAll('.katex')).toHaveLength(4);

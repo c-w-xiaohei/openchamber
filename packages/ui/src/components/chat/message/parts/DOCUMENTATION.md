@@ -190,6 +190,13 @@ only for settled content with file references enabled; mobile keeps navigation
 while skipping filesystem probes. Selection-ending clicks are consumed without
 opening a file, and platform-specific Cmd/Ctrl clicks retain external opening.
 
+#### Why KaTeX is pinned by an override
+
+`@streamdown/math` renders through `rehype-katex`, which depends on KaTeX
+0.16, while the stylesheet the app loads (`styles/katex-css`) comes from the
+KaTeX the UI depends on. The root `overrides` entry keeps one KaTeX in the
+tree, so the markup and its stylesheet are always the same version.
+
 #### Why Mermaid retains synchronous rendering and a separate viewer
 
 Completed Mermaid fences use beautiful-mermaid's synchronous renderer with the

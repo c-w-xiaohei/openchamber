@@ -151,18 +151,27 @@ const renderers = [{ language: 'mermaid', component: MarkdownMermaid }];
 const linkSafety = { enabled: false };
 const remend: StreamdownProps['remend'] = { linkMode: 'text-only', singleTilde: false };
 const BlockArrivalContext = React.createContext({ active: false, firstNewIndex: 0 });
+type ArrivalStyle = React.CSSProperties & { '--oc-md-enter-delay': string };
+const arrivalDelayStyle = (delay: number): ArrivalStyle => ({ '--oc-md-enter-delay': `${delay}ms` });
 
 function MarkdownArrivalBlock(props: BlockProps) {
   const arrival = React.useContext(BlockArrivalContext);
-  // Retain the mount decision across stream settlement and parent updates.
-  const [enter] = React.useState(() => arrival.active);
-  const [delay] = React.useState(() => Math.min(55, Math.max(0, props.index - arrival.firstNewIndex) * 12));
+  // Only a block committed while the reply streams enters with the reveal; the
+  // first block and blocks present when the message mounted do not, so a full
+  // initial render does not shimmer. Several blocks committed in one update
+  // cascade by 55 ms each, at most four steps. The mount decision is kept
+  // across stream settlement and parent updates.
+  const [delay] = React.useState(() => (
+    arrival.active && props.index > 0 && props.index >= arrival.firstNewIndex
+      ? Math.min(props.index - arrival.firstNewIndex, 4) * 55
+      : null
+  ));
   if (isInvisibleText(props.content)) return null;
   return (
     <div
       data-oc-markdown-block=""
-      className={enter ? 'oc-md-block-enter' : undefined}
-      style={{ animationDelay: `${delay}ms` }}
+      className={delay === null ? undefined : 'oc-md-block-enter'}
+      style={delay ? arrivalDelayStyle(delay) : undefined}
     >
       <Block {...props} />
     </div>
@@ -278,9 +287,11 @@ export function MarkdownContent({
   const codeWrap = useUIStore((state) => state.codeBlockLineWrap);
   const tableWrap = useUIStore((state) => state.tableCellWrap);
   const container = React.useRef<HTMLDivElement>(null);
-  const committedBlockCount = React.useRef(0);
-  const arrivalActive = mode === 'streaming' && isStreaming && !purpose;
-  const firstNewIndex = committedBlockCount.current;
+  // Null until the first commit: blocks in the first render were not committed
+  // by the stream, they were already there when the message mounted.
+  const committedBlockCount = React.useRef<number | null>(null);
+  const arrivalActive = mode === 'streaming' && isStreaming && !purpose && committedBlockCount.current !== null;
+  const firstNewIndex = committedBlockCount.current ?? 0;
   const arrival = React.useMemo(
     () => ({ active: arrivalActive, firstNewIndex }),
     [arrivalActive, firstNewIndex],

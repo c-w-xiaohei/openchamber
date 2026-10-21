@@ -407,18 +407,26 @@ test('same-source theme repaint keeps nodes and publishes syntax variables on th
   currentTheme = getDefaultTheme(false);
 });
 
-test('official block arrival keeps 320ms class and bounded stagger through settlement', async () => {
+test('only blocks the stream commits after mount enter, never the first, cascading by 55ms', async () => {
+  await act(() => root.render(null));
   const draw = (content: string, live: boolean) => act(() => root.render(React.createElement(I18nProvider, null,
     React.createElement(Renderer.MarkdownContent, { content, mode: 'streaming', isStreaming: live, enableFileReferences: false }))));
+  const entering = () => Array.from(host.querySelectorAll<HTMLElement>('.oc-md-block-enter'));
+  // A message that mounts mid-stream shows what it already holds without a reveal.
   await draw('First.\n\nSecond.', true);
-  const blocks = Array.from(host.querySelectorAll<HTMLElement>('.oc-md-block-enter'));
-  expect(blocks.length).toBe(2);
-  expect(blocks.every((block) => parseFloat(block.style.animationDelay) <= 55)).toBe(true);
-  const first = blocks[0];
-  await draw('First.\n\nSecond.\n\nThird.', true);
-  expect(host.querySelector('.oc-md-block-enter') === first).toBe(true);
-  await draw('First.\n\nSecond.\n\nThird.', false);
-  expect(host.querySelector('.oc-md-block-enter') === first).toBe(true);
+  expect(entering()).toHaveLength(0);
+  await draw('First.\n\nSecond.\n\nThird.\n\nFourth.\n\nFifth.\n\nSixth.\n\nSeventh.\n\nEighth.', true);
+  const blocks = entering();
+  expect(blocks.map((block) => block.textContent)).toEqual(['Third.', 'Fourth.', 'Fifth.', 'Sixth.', 'Seventh.', 'Eighth.']);
+  expect(blocks.map((block) => block.style.getPropertyValue('--oc-md-enter-delay'))).toEqual(['', '55ms', '110ms', '165ms', '220ms', '220ms']);
+  const third = blocks[0];
+  await draw('First.\n\nSecond.\n\nThird.\n\nFourth.\n\nFifth.\n\nSixth.\n\nSeventh.\n\nEighth.', false);
+  expect(entering()[0]).toBe(third);
+  await act(() => root.render(null));
+  // A fresh streamed reply: the first block never shimmers, the second does.
+  await draw('One.', true);
+  await draw('One.\n\nTwo.', true);
+  expect(entering().map((block) => block.textContent)).toEqual(['Two.']);
 });
 
 test('exports the shared Markdown renderer with bounded real highlighting and no media requests or controls', async () => {
