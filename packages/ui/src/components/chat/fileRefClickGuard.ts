@@ -1,12 +1,8 @@
 import { hasTextSelectionInside } from '@/lib/textSelection';
 
-// File references are marked asynchronously: the annotation pass in
-// `MarkdownRendererImpl` debounces and issues a filesystem stat probe per
-// candidate, so a click can land before the `data-openchamber-file-link`
-// attribute exists. Without a guard the unannotated anchor falls through to
-// its `target="_blank"` default and opens a new app window at a bogus route
-// (issue #3858). This guard routes such clicks to the file viewer instead,
-// using the same `openFileReference` path the annotation would have taken.
+// Route file-looking anchors through the caller's file resolver before their
+// browser default can open a new app window at a bogus route (issue #3858).
+// This also covers anchors whose asynchronous file confirmation is pending.
 //
 // Only primary clicks are intercepted here; keyboard activation of an anchor
 // still produces a native click that bubbles to this listener, and app links
