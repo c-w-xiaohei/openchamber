@@ -83,7 +83,7 @@ function serializeMarkdownTable(table: HTMLTableElement, format: TableFormat): s
 }
 
 export function MarkdownTable({ node, className, children, ...props }: React.ComponentProps<'table'> & ExtraProps) {
-  const { purpose } = useMarkdownPresentation();
+  const { purpose, settled } = useMarkdownPresentation();
   const wrap = useUIStore((state) => state.tableCellWrap);
   const ref = React.useRef<HTMLTableElement>(null);
   const wrapper = React.useRef<HTMLDivElement>(null);
@@ -92,7 +92,9 @@ export function MarkdownTable({ node, className, children, ...props }: React.Com
   React.useLayoutEffect(() => {
     const table = ref.current;
     const container = wrapper.current?.parentElement;
-    if (!table || !container) return;
+    // A streaming table grows on every update; measuring it each time forced
+    // a layout per update. It keeps its natural layout until the reply settles.
+    if (!table || !container || !settled) return;
     const view = table.ownerDocument.defaultView;
     if (!view) return;
     const measure = () => {
@@ -122,7 +124,7 @@ export function MarkdownTable({ node, className, children, ...props }: React.Com
     const observer = new ResizeObserver(measure);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [node, measured]);
+  }, [node, measured, settled]);
   const widths = measured ? fitColumns(measured.natural, measured.available, wrap) : null;
   const columns = widths?.map((width, index) => (
     <col key={index} style={{ width }} />
@@ -208,7 +210,7 @@ export function MarkdownTable({ node, className, children, ...props }: React.Com
       )}
       <div className="min-w-0 overflow-x-auto">
         <table {...props} ref={ref} data-streamdown="table"
-          data-oc-table-layout={widths ? 'fixed' : 'natural'}
+          data-oc-table-layout={widths ? 'fixed' : settled ? 'natural' : 'pending'}
           style={widths ? { ...props.style, width: widths.reduce((sum, width) => sum + width, 0), tableLayout: 'fixed' } : props.style}
           className={cn('border-collapse', className)}>
           {columns && <colgroup>{columns}</colgroup>}

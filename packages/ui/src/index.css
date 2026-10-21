@@ -1723,6 +1723,16 @@ html:not(.dark) .chat-scroll {
   border-inline-end: 0;
 }
 
+/* A table that is still streaming is not measured: it keeps its natural width
+   (or shrinks to the column when cells wrap) until the reply settles. */
+.markdown-content [data-table-wrap="false"] [data-streamdown="table"][data-oc-table-layout="pending"] {
+  width: max-content;
+}
+
+.markdown-content [data-streamdown="table"][data-oc-table-layout="pending"] code {
+  white-space: nowrap;
+}
+
 .markdown-content [data-streamdown="table"][data-oc-table-layout="natural"] {
   width: max-content;
   table-layout: auto;

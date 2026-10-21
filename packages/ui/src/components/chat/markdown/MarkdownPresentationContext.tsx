@@ -13,6 +13,8 @@ export interface MarkdownPresentation {
   directory: string;
   fileReferences: boolean;
   fileNavigation: boolean;
+  /** The text no longer changes: tables may measure their columns. */
+  settled: boolean;
   /** A preview button next to loopback links; only chat messages show it. */
   loopbackPreview: boolean;
   purpose?: 'copy' | 'image';

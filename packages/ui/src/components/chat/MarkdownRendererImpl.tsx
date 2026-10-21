@@ -372,6 +372,7 @@ export function MarkdownContent({
     fileReferences,
     fileNavigation,
     loopbackPreview,
+    settled,
     purpose,
     disableLinkSafety,
     theme,
@@ -382,7 +383,7 @@ export function MarkdownContent({
     confirmFile,
     code,
   }), [
-    directory, fileReferences, fileNavigation, loopbackPreview, purpose, disableLinkSafety, theme,
+    directory, fileReferences, fileNavigation, loopbackPreview, settled, purpose, disableLinkSafety, theme,
     mermaidControls, allowMermaidWheelEvents, onShowPopup, onExportCode, confirmFile, code,
   ]);
 

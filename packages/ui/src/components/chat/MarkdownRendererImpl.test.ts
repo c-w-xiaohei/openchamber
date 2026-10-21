@@ -230,6 +230,33 @@ test('table columns preserve short content and allocate remaining width to long 
   }
 });
 
+test('a streaming table is not measured until the reply settles', async () => {
+  const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 500 });
+  let cellReadCount = 0;
+  const bounds = spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.tagName === 'TD' || this.tagName === 'TH') cellReadCount += 1;
+    return new window.DOMRect(0, 0, 120, 30);
+  });
+  const draw = (live: boolean) => act(() => root.render(React.createElement(I18nProvider, null, React.createElement(Renderer.MarkdownContent, {
+    content: '| a | b |\n| --- | --- |\n| 1 | 2 |', mode: 'streaming', isStreaming: live, enableFileReferences: false,
+  }))));
+  try {
+    await draw(true);
+    const cellReads = () => cellReadCount;
+    expect(cellReads()).toBe(0);
+    expect(host.querySelector('table')?.getAttribute('data-oc-table-layout')).toBe('pending');
+    await draw(false);
+    expect(cellReads()).toBeGreaterThan(0);
+    expect(host.querySelector('table')?.getAttribute('data-oc-table-layout')).toBe('fixed');
+  } finally {
+    bounds.mockRestore();
+    if (clientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidth);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
+    await act(() => root.render(null));
+  }
+});
+
 test('Mermaid preserves the view across themes and restores controls and ASCII copy', async () => {
   const code = 'sequenceDiagram\n  Start->>End: Hello';
   const content = `\`\`\`mermaid\n${code}\n\`\`\``;
