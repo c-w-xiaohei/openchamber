@@ -27,6 +27,7 @@ const prNode = (number, overrides = {}) => ({
   mergeable: 'MERGEABLE',
   mergeStateStatus: 'CLEAN',
   headRefOid: `sha-${number}`,
+  baseRefName: 'main',
   commits: {
     nodes: [{
       commit: {
@@ -152,6 +153,7 @@ describe('fetchPrSummaries', () => {
       draft: false,
       title: 'PR 7',
       headSha: 'sha-7',
+      base: 'main',
       mergeable: null,
       mergeableState: 'unknown',
       checks: null,

@@ -652,6 +652,13 @@
   background-color: color-mix(in srgb, var(--foreground) 4%, transparent);
 }
 
+/* A row in the composer's top slot (goal, background commands, queue, hints).
+   mobile.css makes it taller on touch layouts, where its buttons grow to the
+   36px touch floor. */
+.oc-composer-row {
+  height: 2rem;
+}
+
 .oc-tile-inset {
   background-color: color-mix(in srgb, var(--foreground) 6%, transparent);
 }

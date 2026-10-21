@@ -28,6 +28,7 @@ const SUMMARY_FIELDS = `
   mergeable
   mergeStateStatus
   headRefOid
+  baseRefName
   commits(last: 1) {
     nodes {
       commit {
@@ -110,6 +111,7 @@ const prNodeSchema = z.object({
   mergeable: z.string().nullable(),
   mergeStateStatus: z.string().nullable(),
   headRefOid: z.string(),
+  baseRefName: z.string(),
   commits: z.object({
     nodes: z.array(z.object({
       commit: z.object({
@@ -199,6 +201,9 @@ function toSummary(ref, value) {
     draft: node.isDraft,
     title: node.title,
     headSha: node.headRefOid,
+    // Followed so a PR retargeted on GitHub (its lower stack layer merged)
+    // compares against its new base without waiting for a full read.
+    base: node.baseRefName,
     mergeable: toMergeable(node.mergeable),
     mergeableState: node.mergeStateStatus ? node.mergeStateStatus.toLowerCase() : null,
     // A closed/merged PR's checks are not actionable; the REST status route

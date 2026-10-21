@@ -43,6 +43,7 @@ const pullSummarySchema = z.object({
   draft: z.boolean(),
   title: z.string(),
   headSha: z.string().optional(),
+  base: z.string().optional(),
   mergeable: z.boolean().nullable(),
   mergeableState: z.string().nullable(),
   checks: checksSchema.nullable(),

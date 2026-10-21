@@ -10,13 +10,16 @@ import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { fileContentSearchI18n } from './file-content-search.i18n';
+import { fileEditorAidsI18n } from './file-editor-aids.i18n';
 import { htmlRenderI18n } from './html-render.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
 import { sessionWarmingI18n } from './session-warming.i18n';
+import { overviewI18n } from './overview.i18n';
 import { isolatedSpacesI18n } from './isolated-spaces.i18n';
 import { sourceBoardI18n } from './source-board.i18n';
+import { stacksI18n } from './stacks.i18n';
 import { projectActionsI18n } from './project-actions.i18n';
 import { gitIdentityEditorI18n } from './git-identity-editor.i18n';
 import { environmentI18n } from './environment.i18n';
@@ -144,13 +147,16 @@ export const dict: Record<I18nKey, string> = {
   ...surfacePanelI18n['zh-TW'],
   ...fileArtifactsI18n['zh-TW'],
   ...fileContentSearchI18n['zh-TW'],
+  ...fileEditorAidsI18n['zh-TW'],
   ...htmlRenderI18n['zh-TW'],
   ...sessionNoticesI18n['zh-TW'],
   ...usageStatsI18n['zh-TW'],
   ...webSearchI18n['zh-TW'],
   ...sessionWarmingI18n['zh-TW'],
+  ...overviewI18n['zh-TW'],
   ...isolatedSpacesI18n['zh-TW'],
   ...sourceBoardI18n['zh-TW'],
+  ...stacksI18n['zh-TW'],
   ...projectActionsI18n['zh-TW'],
   ...gitIdentityEditorI18n['zh-TW'],
   ...environmentI18n['zh-TW'],
@@ -3855,4 +3861,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': '此任務已有一次執行正在進行',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': '此任務已在佇列中等待，有空位時就會執行',
   'chat.modelControls.agentFavoriteAdd': '加入最愛。有最愛時，Tab 只在最愛之間切換',
+  'notifications.error.bodyFallback': '發生錯誤',
+  'notifications.question.bodyFallback': '智慧體正在等待你的回覆',
+  'notifications.permission.bodyFallback': '智慧體正在等待你的核准',
+  'notifications.permission.title': '需要權限',
 };

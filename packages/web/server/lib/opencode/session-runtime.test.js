@@ -72,7 +72,7 @@ describe('session runtime', () => {
     expect(runtime.getPendingBlockingRequestsSnapshot()).toEqual({});
   });
 
-  it('broadcasts attention clears through the shared broadcaster', () => {
+  it('broadcasts status changes through the shared broadcaster', () => {
     const events = [];
     const runtime = createSessionRuntime({
       writeSseEvent() {
@@ -94,7 +94,6 @@ describe('session runtime', () => {
         },
       },
     });
-    runtime.markUserMessageSent('session-1');
     runtime.processOpenCodeSsePayload({
       type: 'session.status',
       properties: {
@@ -104,26 +103,11 @@ describe('session runtime', () => {
         },
       },
     });
-    runtime.markSessionViewed('session-1', 'client-1');
 
-    expect(events).toContainEqual({
-      type: 'openchamber:session-status',
-      properties: expect.objectContaining({
-        sessionID: 'session-1',
-        status: 'idle',
-        needsAttention: true,
-      }),
-    });
-    expect(events.at(-1)).toEqual({
-      type: 'openchamber:session-status',
-      properties: {
-        sessionID: 'session-1',
-        status: 'idle',
-        timestamp: expect.any(Number),
-        metadata: {},
-        needsAttention: false,
-      },
-    });
+    expect(events.filter((event) => event.type === 'openchamber:session-status')).toEqual([
+      expect.objectContaining({ properties: expect.objectContaining({ sessionID: 'session-1', status: 'busy' }) }),
+      expect.objectContaining({ properties: expect.objectContaining({ sessionID: 'session-1', status: 'idle' }) }),
+    ]);
   });
 
   it('accepts legacy session.status info.type payloads', () => {
@@ -354,12 +338,10 @@ describe('session runtime', () => {
       type: 'session.status',
       properties: { sessionID: 'session-1', status: { type: 'busy' } },
     });
-    runtime.markUserMessageSent('session-1');
     runtime.dispose();
 
     expect(runtime.getActiveSessionCount()).toBe(0);
     expect(runtime.getSessionActivitySnapshot()).toEqual({});
     expect(runtime.getSessionStateSnapshot()).toEqual({});
-    expect(runtime.getSessionAttentionSnapshot()).toEqual({});
   });
 });

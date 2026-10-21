@@ -375,9 +375,15 @@ Live events keep the list current meanwhile; only sessions another OpenCode
 process created wait for the window to be seen. On desktop that includes a
 window closed to the tray.
 The sidebar and tray consume the same store and must not start their own
-full-list timers. Surface-specific refreshes, such as opening the mobile session
-sheet or returning from suspension, may still request freshness at their
-explicit lifecycle edge; the store coalesces an overlapping in-flight load.
+full-list timers. The tray renders only the sessions the sidebar can place — a
+configured project or worktree, a managed chat, or an isolated space — because
+its twenty rows are the recent-work shortcut, and a session from an
+unconfigured or deleted directory has no row in the sidebar's project or chat
+lists (Pinned and In work can still list one). Pending approvals from a hidden
+session still appear. Surface-specific refreshes, such
+as opening the mobile session sheet or returning from suspension, may still
+request freshness at their explicit lifecycle edge; the store coalesces an
+overlapping in-flight load.
 Until a load has succeeded, OpenCode's first `server.connected` in the runtime
 runs the refresh at once instead of waiting for the next startup retry or the
 45-second interval; when it arrives during a load that then fails, one more
@@ -545,11 +551,11 @@ In-app permission and form toasts for a directory without a store are shown from
 
 An MCP elicitation arrives as a `form.created` whose `sessionID` is the `global` sentinel (`LOCATION_SCOPED_FORM_SESSION_ID` in `location-scoped-forms.ts`): no session record exists for it, so event routing does not treat it as a session address and it never enters the session routing index, otherwise a second directory's elicitation would land in the first one's store. OpenCode 2.0.27 publishes these forms, `form.created` and `form.cancelled` alike, without a location, so the event names no directory either. `routeUnlocatedLocationScopedForm` handles such an event before routing: a settled form is handed to every store that holds its id, and a created form makes the stores whose directory may have asked it (a running turn, since an MCP server asks while one of its tools runs, plus the active directory) re-read their `global` forms, because filing it by guess would send the reply to a directory that answers "form not found". An event that does carry a directory is filed by that directory. The directory store keeps the form under `form["global"]`, bootstrap's directory-scoped `form.list` returns it like any pending form, `useScopedBlockingForms` surfaces it from every session of that directory, and reply/cancel resolve the directory from the store that holds it.
 
-Turn-complete and error notifications are recorded before the directory-store lookup in `handleEvent`, so an unopened directory still gets its unread dot. The subtask check reads the directory store when the directory is open and the global session cache otherwise. Event routing likewise consults the global session cache: a session-addressed event with no directory is routed to the directory the cache records for that session before any active-session or single-store fallback, so another project's events cannot land in the one open store.
+Error details for a failed turn (`notification-store.ts`, shown under the turn by `SessionErrorNotice`) are recorded before the directory-store lookup in `handleEvent`, so an unopened directory still keeps them. The subtask check reads the directory store when the directory is open and the global session cache otherwise. Event routing likewise consults the global session cache: a session-addressed event with no directory is routed to the directory the cache records for that session before any active-session or single-store fallback, so another project's events cannot land in the one open store.
 
 Session display order is independent from streaming-frequency `time.updated` publications. `session-ordering.ts` promotes a session exactly when its authoritative activity phase crosses `settled` (`idle`/`error`) and `active` (`busy`/`retry`) in either direction. Repeated busy/retry or idle/error events are no-ops. The first authoritative status snapshot establishes a baseline without synthetic promotions; later snapshots reconcile missed transitions. Root sessions compare lifecycle rank only with other roots, while child sessions compare lifecycle rank only with siblings sharing the same `parentID`, so child activity never moves its root conversation. Pins remain the first ordering bucket. The timestamp/creation fallback is frozen when a session first participates in ordering, so later metadata-only updates cannot reorder it; creation time and ID provide deterministic ties. Runtime switches clear all phases, baselines, and ranks.
 
-`session-activity-timing.ts` measures how long a turn has been running, because `SessionStatus` carries no timestamps. It is driven from the same two write paths as `global-session-status.ts`, so a row can never count a turn that index calls idle. A session gains a start on its first `active` observation and keeps it across repeated busy/retry events; settling converts that start into a finished duration, which rows show only while the session is unread and which is therefore never persisted.
+`session-activity-timing.ts` measures how long a turn has been running, because `SessionStatus` carries no timestamps. It is driven from the same two write paths as `global-session-status.ts`, so a row can never count a turn that index calls idle. A session gains a start on its first `active` observation and keeps it across repeated busy/retry events; settling converts that start into a finished duration, kept in memory only. Rows show a finished turn's length while the session is unread, through `session-turn-duration.ts`: the length the server recorded on the session (`metadata.openchamber.turn`, `lib/sessionTurnMetadata.ts`) wins, and this page's measurement covers the moment before that record arrives. That is what keeps the length on a row after a restart and on every device.
 
 A background subagent keeps its parent's turn open for display. The parent goes idle while the child session works and runs again when OpenCode hands the result back; `global-session-status.ts` therefore holds the parent's timer through that pause (an idle parent with a running descendant does not settle, the last descendant to finish settles it, and snapshots count ancestors of running sessions as active). `useSessionTurnActivity` exposes that display state to rows, tabs and switchers. `statusById` and `activeSessionIds` stay the session's own status: sends, cleanup and retention must not treat an idle parent as busy. The parent lookup comes from the global sessions store through `setSessionParentResolver`, wired by `sync-context.tsx`.
 
@@ -570,6 +576,20 @@ Child-session discovery (`child-session-discovery.ts`) adds only children the gl
 The active-session watchdog in `sync-context.tsx` sends status recovery through the active-session priority of `runBackgroundNetworkTask`. Its child-session discovery pages use `runSessionListNetworkTask`, alongside global and bootstrap session pages. Both lanes live in `@/lib/background-network`. Git, skills, and directory initialization use the background lane. These limits reserve browser connections for interactive message requests rather than letting startup fan-out occupy the whole pool.
 
 Reconnect and watchdog candidates come from non-idle status, the viewed session, or unresolved materialized messages and tool parts. Only ancestors of those candidates join recovery. The watchdog's 5 s status poll and its child discovery run only for sessions with live work of their own; the viewed session joins them only when it is busy or unresolved. An idle viewed session gets its updates from the event stream, and the stale-stream check still covers it. Polling it every 5 s kept the private relay awake for as long as a session stayed open on any device, because the relay hibernates only after 10 s without a message. Parentage in cached session history alone starts no status polling, child discovery, or message materialization; an idle directory with only cached metadata does not scan its history.
+
+### Why failed watchdog polls back off per directory
+
+A failed watchdog status read preserves the previous status and waits 10, 20, 40, then at most 60 s after failure completion before retrying. A successful snapshot, including an empty one, restores the 5 s cadence and reconciles normally. Directory disposal, having no recovery candidates, and restarting the watchdog for a new SDK clear the delay.
+
+### Why stale resync and child discovery have separate retry state
+
+Stale resync and child discovery each wait 30 s after a failed attempt completes, then 60 s after subsequent failures. A successful attempt clears only its own delay and restores its 15 s cadence. The watchdog keeps its 5 s tick and per-directory overlap guards. Failure in one directory cannot delay another directory or reset another mechanism's outstanding failure. The 60 s cap bounds the added wait for a missed idle event or an undiscovered child once reads become available again.
+
+The no-candidates branch also clears the last-discovery timestamp, making the first discovery after an idle-to-busy transition eligible on the next tick without waiting for any remainder of the previous 15 s window.
+
+A resync reports failure when its active-session snapshot is null, a session record cannot be fetched, the message loader reports a tail-load error, or a form or permission read fails. Successful parts still reconcile and failed parts retain their previous data. `resyncBlockingRequestsForDirectory` returns whether both requested lists succeeded; callers that only need its best-effort updates may ignore the result. Stream-reconnect recovery bypasses the watchdog delay, so a restored stream can repair state immediately. The watchdog's own stale-stream check is different: its reconnect-and-resync attempt waits out the stale-resync delay, while transport-level reconnects and gap recovery stay ungated.
+
+Discovery keeps the session-page helper's existing 3 attempts, with waits of 500 and 1,000 ms. An exhausted page starts the outer delay, and a complete empty list clears it. This preserves brief-error recovery within one attempt while pacing repeated failures of the whole discovery. Disposal, loss of recovery candidates, and a new SDK clear both mechanisms' delays. Late discovery completions from an obsolete watchdog or directory store publish nothing.
 
 Visible sidebar change-request discovery is separate from child-store bootstrap demand. Worktree topology supplies directory ownership only. The sidebar acquires at most 50 unique demanded directories through the shared [repository binding owner](../lib/source-control/DOCUMENTATION.md), with cold reads behind the background-network gate, then asks the provider-neutral status store for one-shot status under each binding's primary provider account and revision. Binding publications refresh only the affected directory's status demand. Connected accounts outside the binding do not add requests. Hiding the sidebar or collapsing a project removes that demand; missing, unsupported, and failed binding reads issue no status request. A provider association must have ready endpoint authority; aggregate `needs-attention` on an unrelated provider or transport does not suppress it.
 The watchdog calls the stream stale after 20 s without stream activity. Stream activity is anything the event pipeline receives, reported through `onStreamActivity`: an event, a WebSocket frame, or a keepalive that carries no event. OpenCode 2 sends its heartbeat as an SSE comment and the WebSocket bridge sends `openchamber:heartbeat`, and neither becomes a delivered event. Counting delivered events alone made an idle viewed session look stale, so the stream reconnected and resynced every 15 to 20 s, as reported in #4062. Starting a connection attempt is not activity, so a stream that receives nothing still goes stale.
@@ -598,9 +618,23 @@ This keeps cold/global lists responsive without requiring a refetch after every 
 
 Live activity/status indicators must not depend on this cache. They must use the event/snapshot-reconciled global live status index.
 
+### Unread sessions
+
+`session-unread.ts` owns the unread mark, and OpenCode owns the state behind it. A session record carries `time.idle` (when its last turn ended, whatever the outcome) and `time.viewed` (a watermark of the last turn end a viewer saw, which OpenCode keeps monotone). A top-level, unarchived session whose `idle` is past its `viewed` is unread. Rows, tabs, switchers, collapsed aggregates, run overviews, the tray, the dock badge and the iOS widget all read that one rule from the global sessions store.
+
+Marking a session seen (`markSessionViewed` in `notification-store.ts`, which also clears its native notifications) writes the watermark locally at once and sends `POST /api/session/:id/view` with the `idle` it saw; a failed write restores the previous watermark unless a newer record replaced it. OpenCode announces the view as `session.viewed` to every client, so a session seen on one device stops being unread on the others. The global store's change signatures include `idle` and `viewed`, so these updates publish immediately instead of waiting with recency-only updates.
+
+Archive and delete clear the mark whatever did them (the archive action, retention cleanup, worktree removal): an archived session is never unread and a deleted one has no record. Restoring an archived session marks its last turn seen, so it does not come back unread.
+
+OpenChamber clients recorded no views before they read this state. The server keeps a baseline per data dir (`packages/web/server/lib/openchamber-sessions/unread-baseline.js`; the VS Code extension shares the file) and serves turns that ended before it as seen, so the first run does not light up every old session.
+
+### Why OpenCode's viewed state and not an OpenChamber store
+
+The unread mark used to be a client-side list of turn-complete events. It lived in one window's memory, so a restart lost every unread session and each device kept its own. OpenCode 2.x already persists exactly this state per session and broadcasts views, and its own apps read the same fields, so the record is the single authority and OpenChamber adds only the baseline.
+
 ### Viewed sessions and surface attention
 
-A `session.idle` or `session.error` for the selected session is recorded as viewed only while the user can see this surface; otherwise it raises an unread marker. `lib/surfaceAttention.ts` owns that answer. Web, desktop, and mobile use document focus; on web and desktop, `App.tsx` also marks the selected session viewed when the window regains focus. A VS Code webview document's focus does not track what the user sees: it loses focus whenever the code editor takes it while the chat stays on screen, and it can keep focus while VS Code is in the background. There the extension host reports window focus and webview visibility (`viewerStateChanged`); once a report arrives it replaces document focus, and `VSCodeApp` marks the selected session viewed whenever a report says the webview is seen again.
+A turn that ends in the selected session counts as seen only while the user can see this surface; otherwise the session stays unread. `sync-context.tsx` watches the sessions on screen (the selected one and those shown in side panels) and marks one seen when its record turns unread while it is viewed. `lib/surfaceAttention.ts` owns that answer. Web, desktop, and mobile use document focus; on web and desktop, `App.tsx` also marks the selected session viewed when the window regains focus. A VS Code webview document's focus does not track what the user sees: it loses focus whenever the code editor takes it while the chat stays on screen, and it can keep focus while VS Code is in the background. There the extension host reports window focus and webview visibility (`viewerStateChanged`); once a report arrives it replaces document focus, and `VSCodeApp` marks the selected session viewed whenever a report says the webview is seen again.
 
 ## Session message loading
 
@@ -851,22 +885,24 @@ action, so archived subsessions come back with the session, and reports
 failure separately from the accepted message, so a restore failure cannot
 cause a duplicate send.
 
-The OpenCode server cannot clear `time.archived` over HTTP: `session.update`
-only applies the field when the payload carries a finite number, so an omitted
-key is a no-op and `null` is silently ignored. Restore therefore writes
-`time.archived = 0` (`UNARCHIVED_TIMESTAMP` in `session-actions.ts`). Every
-client-side reader classifies archive state by truthiness of `time.archived`,
-so `0` reads as active in the UI, the event reducer, and the OpenCode app/TUI.
+OpenCode holds archive state since 2.1: archive and restore go through
+OpenChamber's batch routes (`session-archive-batch.ts`), which set it on
+OpenCode's record, and OpenCode announces `session.archived` /
+`session.unarchived` to every client, so a session archived in the TUI moves
+here too. A session whose directory was deleted cannot be changed on OpenCode
+where it is, so the server moves it to its project's main folder first
+(OpenCode announces `session.moved`); when archiving, its archive file marks
+the session archived before the move, so the sidebar never shows it as active
+under the project. The server folds that file onto the records it serves and
+announces its changes as `openchamber:session-archived`. Restore clears
+`time.archived`; every reader classifies archive state by its truthiness.
 
-The server's `time_archived IS NULL` list filter still excludes such rows, so
-any query that wants a truthful active list must fetch inclusively
-(`archived: true`) and split client-side (`splitGlobalSessionsByArchived`).
-The global sessions store does this for its full and per-directory loads;
-directory bootstrap keeps using the server filter because live child stores
-must not hold archived sessions. A restored session re-enters its live
-directory store through the authoritative `session.updated` event the server
-publishes for the update; until then it remains fully visible through the
-global store (sidebar, switcher) and addressable by ID (message loading).
+OpenCode's `archived` list filter cannot see the sessions only that file
+marks, so the global sessions store loads every session of a scope and splits
+active from archived client-side (`splitGlobalSessionsByArchived`). A restored
+session re-enters its live directory store through the event; until then it
+remains fully visible through the global store (sidebar, switcher) and
+addressable by ID (message loading).
 
 The full-app collection retains active records whose directory is absent from
 the current topology. Display grouping first resolves exact configured

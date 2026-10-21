@@ -10,6 +10,7 @@ import {
   isTerminalCopyShortcut,
   isTerminalLinkPointerGesture,
   isTerminalPasteShortcut,
+  isTerminalMacAppShortcut,
   resolveTerminalMouseData,
   shouldBlinkTerminalCursor,
   terminalContentOriginY,
@@ -109,6 +110,27 @@ describe('shortcuts and gestures', () => {
     expect(isTerminalPasteShortcut({ key: 'v', ctrlKey: true, metaKey: false, shiftKey: false }, 'Win32')).toBe(false);
     expect(isTerminalPasteShortcut({ key: 'v', ctrlKey: true, metaKey: false, shiftKey: true }, 'Win32')).toBe(true);
     expect(isTerminalPasteShortcut({ key: 'Insert', ctrlKey: false, metaKey: false, shiftKey: true }, 'Win32')).toBe(true);
+  });
+
+  test('macOS Super chords belong to the app; Option and Ctrl stay with the terminal', () => {
+    const mac = (mods: Partial<Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>>) => ({
+      altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods,
+    });
+    // Every registered menu chord stands down: the accelerators (Cmd+B, Cmd+J,
+    // Cmd+Q, Cmd+Shift+G, Cmd+Alt+L, the edit roles, ...) claim them upstream.
+    expect(isTerminalMacAppShortcut(mac({ metaKey: true }), 'MacIntel')).toBe(true);
+    expect(isTerminalMacAppShortcut(mac({ metaKey: true, shiftKey: true }), 'MacIntel')).toBe(true);
+    expect(isTerminalMacAppShortcut(mac({ metaKey: true, altKey: true }), 'MacIntel')).toBe(true);
+    // Terminal-owned chords keep encoding: Option is the terminal's Meta key,
+    // Ctrl chords are legacy C0 input, and Cmd+Ctrl has no accelerator.
+    expect(isTerminalMacAppShortcut(mac({ altKey: true }), 'MacIntel')).toBe(false);
+    expect(isTerminalMacAppShortcut(mac({ ctrlKey: true }), 'MacIntel')).toBe(false);
+    expect(isTerminalMacAppShortcut(mac({ metaKey: true, ctrlKey: true }), 'MacIntel')).toBe(false);
+    expect(isTerminalMacAppShortcut(mac({}), 'MacIntel')).toBe(false);
+    // Other platforms keep encoding Super (their menu chords are Ctrl-based
+    // and resolved separately).
+    expect(isTerminalMacAppShortcut(mac({ metaKey: true }), 'Win32')).toBe(false);
+    expect(isTerminalMacAppShortcut(mac({ metaKey: true }), 'Linux x86_64')).toBe(false);
   });
 
   test('a paste shortcut delivers once whichever path arrives first', () => {

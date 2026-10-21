@@ -371,6 +371,32 @@ export function createTrackedItemsService({
       scheduleNext();
     },
 
+    /**
+     * One item a user asked to read again, by provider, project and number,
+     * whichever account or kind follows it: its state is asked now.
+     */
+    refreshItem(provider, { owner, repo, number }) {
+      const same = (left, right) => !left || String(left).toLowerCase() === String(right ?? '').toLowerCase();
+      for (const [key, entry] of entries) {
+        const item = entry.item;
+        if (item.provider === provider && item.number === number && same(owner, item.owner) && same(repo, item.repo)) forced.add(key);
+      }
+      scheduleNext();
+    },
+
+    /**
+     * Something changed on a provider through this server (a merge, a comment,
+     * a state change) or the user asked to read it again: its open items on
+     * screen are asked now.
+     */
+    refreshProvider(provider) {
+      for (const key of watchedKeys()) {
+        const entry = entries.get(key);
+        if (entry && entry.item.provider === provider && isLive(entry)) forced.add(key);
+      }
+      scheduleNext();
+    },
+
     /** An agent turn finished somewhere: anything still open may have moved. */
     noteTurnFinished() {
       if (turnTimer || disposed) return;

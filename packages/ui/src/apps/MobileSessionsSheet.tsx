@@ -89,8 +89,8 @@ import {
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useAllLiveSessions } from '@/sync/sync-context';
 import { useGlobalSyncStore } from '@/sync/global-sync-store';
-import { useSessionUnseenCount } from '@/sync/notification-store';
-import { useHasSessionActivityDuration } from '@/sync/session-activity-timing';
+import { useSessionUnread } from '@/sync/session-unread';
+import { useHasSessionTurnDuration } from '@/sync/session-turn-duration';
 import { SessionActivityDuration } from '@/components/session/SessionActivityDuration';
 import { useSessionAiRenameAction } from '@/components/session/useSessionAiRenameAction';
 import type { WorktreeMetadata } from '@/types/worktree';
@@ -154,6 +154,8 @@ type MobileSessionsSheetProps = {
     onOpenScheduled: () => void;
     onOpenArchive: () => void;
     onOpenUsage: () => void;
+    /** The overview of what waits, runs and looks done; absent while the feature is not in this build. */
+    onOpenOverview?: () => void;
     /** The issues and PRs board. */
     onOpenSourceBoard: () => void;
     /** Present only while a server update is available (hosted web). */
@@ -401,11 +403,11 @@ const SessionRow: React.FC<{
   const aiRename = useSessionAiRenameAction(session.id, session.directory, swipeEnabled && (revealed || renaming));
   // Live indicators, same conventions as the desktop sidebar: busy/retry →
   // spinner; unseen activity on a non-active row → attention dot.
-  const unseenCount = useSessionUnseenCount(session.id);
+  const isUnread = useSessionUnread(session.id);
   const turnActivity = useSessionTurnActivity(session.id);
   const isStreaming = turnActivity !== null;
-  const showUnreadDot = !isStreaming && unseenCount > 0 && !active;
-  const hasActivityDuration = useHasSessionActivityDuration(session.id, isStreaming);
+  const showUnreadDot = !isStreaming && isUnread && !active;
+  const hasActivityDuration = useHasSessionTurnDuration(session.id, isStreaming);
   const showActivityDuration = (isStreaming || showUnreadDot) && hasActivityDuration;
   // Jev thinks this work looks finished: the same quiet check the sidebar shows.
   const showDoneHint = Boolean(work?.inWork) && !isStreaming && isDoneSuggested(session);
@@ -616,7 +618,7 @@ const EMPTY_SESSION_NODES: readonly SessionNode[] = [];
 const MobileRunRow: React.FC<{ run: MultiRunSummary; laneNodes: readonly SessionNode[]; depth: number }> = ({ run, laneNodes, depth }) => {
   const { t } = useI18n();
   const active = useUIStore((state) => state.runOverviewKey === run.key);
-  const activity = useCollapsedSessionActivityState({ nodes: laneNodes, includeUnreadSubtasks: false });
+  const activity = useCollapsedSessionActivityState({ nodes: laneNodes });
   const time = formatRelativeShort(run.lastActivity);
   return (
     <div
@@ -846,6 +848,9 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
   const storedProjectSortOrder = useSessionDisplayStore((state) => state.projectSortOrder);
   const setProjectSortOrder = useSessionDisplayStore((state) => state.setProjectSortOrder);
   const sidebarViewMode = useSessionDisplayStore((state) => state.sidebarViewMode);
+  // The settings toggle that hides the chats section in the desktop sidebar
+  // hides it here too; the drawer simply never renders the header (#5354).
+  const showChatsSection = useSessionDisplayStore((state) => state.showChatsSection);
   // The timeline keeps projects in the user's own order, as on desktop;
   // reordering is its only sort.
   const projectSortOrder = sidebarViewMode === 'timeline' ? 'manual' : storedProjectSortOrder;
@@ -2449,6 +2454,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
           ) : (
             <div className="flex flex-col">
               {(() => {
+                if (!showChatsSection) return null;
                 const chatsExpanded = projectExpandedMap[CHAT_DRAFT_PROJECT_ID] ?? true;
                 const chatsLabel = t('mobile.sessions.section.chats');
                 return (
@@ -2694,6 +2700,20 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
                 >
                   <Icon name="download" className="size-5" />
                   <span className="absolute inset-e-2 top-2 inline-flex size-2 rounded-full bg-primary" aria-hidden />
+                </Button>
+              ) : null}
+              {footer.onOpenOverview ? (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="lg"
+                  className="w-10 px-0"
+                  onClick={footer.onOpenOverview}
+                  aria-label={t('overview.title')}
+                  title={t('overview.title')}
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  <Icon name="compass-3" className="size-5" />
                 </Button>
               ) : null}
               <Button

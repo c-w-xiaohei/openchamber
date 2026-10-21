@@ -418,6 +418,7 @@ describe('GET /api/source-control/github/references', () => {
           mergeable: 'CONFLICTING',
           mergeStateStatus: 'DIRTY',
           headRefOid: 'sha-4',
+          baseRefName: 'main',
           commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [
             { __typename: 'CheckRun', databaseId: 1, name: 'test', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: null, checkSuite: { app: { databaseId: 1 } } },
           ] } } } }] },

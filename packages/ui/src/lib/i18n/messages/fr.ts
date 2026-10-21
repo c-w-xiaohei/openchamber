@@ -9,13 +9,16 @@ import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { fileContentSearchI18n } from './file-content-search.i18n';
+import { fileEditorAidsI18n } from './file-editor-aids.i18n';
 import { htmlRenderI18n } from './html-render.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
 import { sessionWarmingI18n } from './session-warming.i18n';
+import { overviewI18n } from './overview.i18n';
 import { isolatedSpacesI18n } from './isolated-spaces.i18n';
 import { sourceBoardI18n } from './source-board.i18n';
+import { stacksI18n } from './stacks.i18n';
 import { projectActionsI18n } from './project-actions.i18n';
 import { gitIdentityEditorI18n } from './git-identity-editor.i18n';
 import { environmentI18n } from './environment.i18n';
@@ -143,13 +146,16 @@ export const dict = {
   ...surfacePanelI18n.fr,
   ...fileArtifactsI18n.fr,
   ...fileContentSearchI18n.fr,
+  ...fileEditorAidsI18n.fr,
   ...htmlRenderI18n.fr,
   ...sessionNoticesI18n.fr,
   ...usageStatsI18n.fr,
   ...webSearchI18n.fr,
   ...sessionWarmingI18n.fr,
+  ...overviewI18n.fr,
   ...isolatedSpacesI18n.fr,
   ...sourceBoardI18n.fr,
+  ...stacksI18n.fr,
   ...projectActionsI18n.fr,
   ...gitIdentityEditorI18n.fr,
   ...environmentI18n.fr,
@@ -3854,4 +3860,8 @@ export const dict = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': 'Cette tâche a déjà une exécution en cours',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': 'Cette tâche attend déjà dans la file et s’exécutera dès qu’une place se libère',
   'chat.modelControls.agentFavoriteAdd': 'Ajouter aux favoris. Avec des favoris, Tab ne passe que par eux',
+  'notifications.error.bodyFallback': 'Une erreur est survenue',
+  'notifications.question.bodyFallback': 'L\'agent attend votre réponse',
+  'notifications.permission.bodyFallback': 'L\'agent attend votre autorisation',
+  'notifications.permission.title': 'Autorisation requise',
 } as const;

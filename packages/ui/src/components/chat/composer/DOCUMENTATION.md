@@ -369,11 +369,13 @@ copy.
 - `prefixTokens.ts` — `/command`, `$skill`, `#snippet`. Scanning is deliberately
   generous; **membership in the command, skill or snippet registry is the
   authority**, not the pattern. An unknown `/token` or `$token` stays plain
-  prose, so `$5` is just money.
+  prose, so `$5` is just money. The skill sigil also matches the yen and
+  full-width dollar signs a CJK IME types for the Shift+4 key, so `¥5` is
+  money for the same reason.
 - `triggers.ts` — which picker a caret position asks for. Exactly one can be
   active, with precedence `command > skill > snippet > mention`. Commands open
-  only on a `/` in the first column; skills open on `$` at any word boundary,
-  the start of the text included. The two never share a list: the `/` palette
+  only on a `/` in the first column; skills open on `$` or its IME spellings at
+  any word boundary, the start of the text included. The two never share a list: the `/` palette
   holds commands only. Only typing and pasting open a picker: text the app sets
   through the editor's `value` prop (a restored draft, a git conflict prompt)
   arrives with `ComposerChange.fromValueProp` and closes any open picker.

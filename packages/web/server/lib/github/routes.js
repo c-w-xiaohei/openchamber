@@ -556,7 +556,15 @@ export function registerGitHubRoutes(app, options = {}) {
       .filter((pr) => sameProject(pullTargetProject(pr), expectedProject))
       .filter((pr) => pr.head.repo
         && sameProject({ owner: pr.head.repo.owner.login, name: pr.head.repo.name }, sourceProject));
-    return candidates.length === 1 ? { state: 'succeeded', result: { number: candidates[0].number } } : { state: 'outcome-unknown' };
+    if (candidates.length !== 1) return { state: 'outcome-unknown' };
+    const found = candidates[0];
+    // The create may have ended before its PR joined the stack below it (the
+    // connection dropped, the server stopped): finish that here, so the
+    // receipt says where the PR stands as the uninterrupted create would.
+    const stacked = sameProject(sourceProject, expectedProject)
+      ? await settleStack(octokit, expectedProject, found.number, base, found.base?.repo?.default_branch)
+      : undefined;
+    return { state: 'succeeded', result: stacked === undefined ? { number: found.number } : { number: found.number, stacked } };
   };
   // A create's claim target has no number yet; the receipt names the created
   // pull request from the recorded result so clients can link to it.
@@ -603,9 +611,8 @@ export function registerGitHubRoutes(app, options = {}) {
       if (currentPr.merged === true || isProviderString(currentPr.merged_at)) {
         return { state: 'succeeded', result: { merged: true } };
       }
-      if (currentPr.state === 'open' && currentPr.merged === false) {
-        return definiteFailure('SOURCE_CONTROL_MUTATION_NOT_APPLIED');
-      }
+      // Still open says nothing certain: GitHub may be merging it in the
+      // background or holding it in a merge queue. The live state follows.
     } else if (kind === 'state') {
       // A merged pull request reads `closed` too, and can no longer be reopened.
       if (currentPr.state === operation.state) return { state: 'succeeded', result: { state: currentPr.state } };
@@ -638,6 +645,122 @@ export function registerGitHubRoutes(app, options = {}) {
     const first = Array.isArray(data?.errors) ? data.errors[0] : undefined;
     const detail = [first, first?.message, data?.message].find((value) => isProviderString(value) && value.trim());
     return canonicalMutationError(detail ?? 'GitHub refused the change', 'SOURCE_CONTROL_MUTATION_REJECTED', status);
+  };
+  // GitHub merges a stacked PR, with the layers below it, and enters a merge
+  // queue only through its asynchronous merge; the classic endpoint refuses
+  // both. The merge runs in the background, so the answer is followed for a
+  // while: most land within seconds, and one still running is reported as
+  // such, its outcome arriving with the PR's live state. A host without the
+  // endpoint (an older GitHub Enterprise Server) merges the classic way.
+  const MERGE_ASYNC_POLL_MS = 1000;
+  const MERGE_ASYNC_WAIT_MS = 20_000;
+  const MERGE_ASYNC_STATUSES = new Set(['pending', 'merged', 'enqueued', 'failed']);
+  const isMergeAsyncAnswer = (data) => isPlainObject(data) && MERGE_ASYNC_STATUSES.has(data.status);
+  const mergeAsyncAnswer = (data) => {
+    if (!isPlainObject(data) || !MERGE_ASYNC_STATUSES.has(data.status)) {
+      throw invalidProviderPayload('GitHub returned an invalid merge result');
+    }
+    const details = isPlainObject(data.details) ? data.details : {};
+    return {
+      status: data.status,
+      uuid: isProviderString(details.uuid) ? details.uuid : null,
+      message: isProviderString(details.message) ? details.message : null,
+    };
+  };
+  const mergeClassic = async (octokit, project, target, method) => {
+    const merged = await octokit.rest.pulls.merge({
+      owner: project.owner, repo: project.name, pull_number: target.number, merge_method: method, sha: target.headSha,
+    });
+    const data = merged?.data;
+    if (!isPlainObject(data) || Object.prototype.toString.call(data.merged) !== '[object Boolean]'
+      || (data.message !== undefined && !isProviderString(data.message))) {
+      throw invalidProviderPayload('GitHub returned an invalid merge result');
+    }
+    return { merged: data.merged };
+  };
+  const mergePullRequest = async (octokit, project, target, method) => {
+    const route = { owner: project.owner, repo: project.name, pull_number: target.number };
+    let answer;
+    try {
+      const response = await octokit.request('PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge-async', {
+        ...route, merge_method: method, sha: target.headSha,
+      });
+      answer = mergeAsyncAnswer(response?.data);
+    } catch (error) {
+      const status = error?.response?.status ?? error?.status;
+      if (status === 404) return mergeClassic(octokit, project, target, method);
+      // A merge of this PR already requested is followed instead of asked
+      // again; any other refusal (a moved head, a conflict) is GitHub's reason.
+      if (status !== 409 || !isMergeAsyncAnswer(error.response?.data)) throw providerRejection(error);
+      answer = mergeAsyncAnswer(error.response.data);
+    }
+    // Accepted from here on: a follow-up read that fails says nothing about
+    // the merge itself, which the PR's live state then reports.
+    const deadline = Date.now() + MERGE_ASYNC_WAIT_MS;
+    while (answer.status === 'pending' && answer.uuid && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, MERGE_ASYNC_POLL_MS));
+      try {
+        const response = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}/merge-async/{uuid}', { ...route, uuid: answer.uuid });
+        answer = mergeAsyncAnswer(response?.data);
+      } catch {
+        return { merged: false, outcome: 'merging' };
+      }
+    }
+    if (answer.status === 'failed') {
+      throw canonicalMutationError(answer.message ?? 'GitHub could not merge the pull request', 'SOURCE_CONTROL_MUTATION_REJECTED', 422);
+    }
+    if (answer.status === 'merged') return { merged: true };
+    return { merged: false, outcome: answer.status === 'enqueued' ? 'queued' : 'merging' };
+  };
+  // GitHub keeps a chain of PRs, each on the branch of the one below, as a
+  // stack when asked. A new PR whose base is another open PR's branch joins
+  // that PR's stack as its top layer, or starts one with it. True once GitHub
+  // keeps it, false when it refused (the parent is not its stack's top layer,
+  // a host without stacks); the PR itself stands either way, on that base.
+  // Undefined when the base is no open PR's branch, or that cannot be read.
+  // The default branch is a stack's trunk, never a layer: a PR into it does
+  // not join an open PR out of it (a release PR from main to production).
+  const stackOnParent = async (octokit, project, number, base, defaultBranch) => {
+    if (!defaultBranch || base === defaultBranch) return undefined;
+    const route = { owner: project.owner, repo: project.name };
+    let parent;
+    try {
+      const listed = await octokit.rest.pulls.list({ ...route, state: 'open', head: `${project.owner}:${base}`, per_page: 5 });
+      parent = (Array.isArray(listed?.data) ? listed.data : [])
+        .find((pr) => isPlainObject(pr) && pr.number !== number && pr.head?.ref === base
+          && sameProject(pr.head?.repo ? { owner: pr.head.repo.owner?.login, name: pr.head.repo.name } : null, project));
+    } catch {
+      return undefined;
+    }
+    if (!parent) return undefined;
+    try {
+      const listedStacks = await octokit.request('GET /repos/{owner}/{repo}/stacks', { ...route, pull_request: parent.number });
+      const stack = Array.isArray(listedStacks?.data) ? listedStacks.data[0] : null;
+      if (isPlainObject(stack) && Number.isSafeInteger(stack.number)) {
+        await octokit.request('POST /repos/{owner}/{repo}/stacks/{stack_number}/add', { ...route, stack_number: stack.number, pull_requests: [number] });
+      } else {
+        await octokit.request('POST /repos/{owner}/{repo}/stacks', { ...route, pull_requests: [parent.number, number] });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  /**
+   * Where a PR found after an interrupted create stands: true when GitHub
+   * already keeps it in a stack, else as `stackOnParent` would leave it.
+   * Undefined when GitHub cannot say, so the receipt claims nothing.
+   */
+  const settleStack = async (octokit, project, number, base, defaultBranch) => {
+    let listed;
+    try {
+      listed = await octokit.request('GET /repos/{owner}/{repo}/stacks', { owner: project.owner, repo: project.name, pull_request: number });
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(listed?.data)) return undefined;
+    if (listed.data.some((stack) => isPlainObject(stack) && Number.isSafeInteger(stack.number))) return true;
+    return stackOnParent(octokit, project, number, base, defaultBranch);
   };
   const postComment = async (octokit, project, number, body) => {
     let response;
@@ -1017,8 +1140,12 @@ export function registerGitHubRoutes(app, options = {}) {
             || !sameProject(createdSource, sourceProject)) {
             throw invalidProviderPayload('GitHub returned a created pull request with an unexpected target');
           }
-          // Recorded durably so a replay or restart still names the new PR.
-          return { number: created.number };
+          // A PR on another open PR's branch is that one's next layer. Recorded
+          // durably so a replay or restart still names the new PR and its stack.
+          const stacked = sameProject(sourceProject, expectedProject)
+            ? await stackOnParent(octokit, expectedProject, created.number, base, created.base?.repo?.default_branch)
+            : undefined;
+          return stacked === undefined ? { number: created.number } : { number: created.number, stacked };
         };
         reconcile = () => reconcileCreateMutation(octokit, expectedProject, sourceProject, head, base);
       } else if (ISSUE_KINDS.has(kind)) {
@@ -1077,21 +1204,7 @@ export function registerGitHubRoutes(app, options = {}) {
           reconcile = () => reconcileExistingMutation(octokit, kind, target);
         } else if (kind === 'merge') {
           const { method } = operation;
-          perform = async () => {
-            const merged = await octokit.rest.pulls.merge({
-              owner: expectedProject.owner,
-              repo: expectedProject.name,
-              pull_number: target.number,
-              merge_method: method,
-              sha: target.headSha,
-            });
-            const data = merged?.data;
-            if (!isPlainObject(data) || Object.prototype.toString.call(data.merged) !== '[object Boolean]'
-              || (data.message !== undefined && !isProviderString(data.message))) {
-              throw invalidProviderPayload('GitHub returned an invalid merge result');
-            }
-            return { merged: data.merged };
-          };
+          perform = () => mergePullRequest(octokit, expectedProject, target, method);
           reconcile = () => reconcileExistingMutation(octokit, kind, target);
         } else if (kind === 'labels') {
           perform = () => setLabels(octokit, expectedProject, target.number, operation.labels);
@@ -3353,7 +3466,7 @@ export function registerGitHubRoutes(app, options = {}) {
         diff = isProviderString(diffResp?.data) ? diffResp.data : undefined;
       }
 
-      return res.json({
+      const contextPayload = {
         connected: true,
         repo,
         pr,
@@ -3363,7 +3476,16 @@ export function registerGitHubRoutes(app, options = {}) {
         ...(diff ? { diff } : {}),
         checks,
         ...(Array.isArray(checkRunsOut) ? { checkRuns: checkRunsOut } : {}),
-      });
+      };
+      // A layer of a stack names its layers, so an agent given the PR knows
+      // what sits below and above it. GitHub marks a stacked PR's own
+      // resource; only then is the stack read, and a failed read leaves it out.
+      if (isPlainObject(prData.stack)) {
+        const { fetchPullStack } = await import('./reference-search.js');
+        const stack = await fetchPullStack({ octokit, owner: repo.owner, repo: repo.repo, number }).catch(() => undefined);
+        if (stack !== undefined) contextPayload.stack = stack;
+      }
+      return res.json(contextPayload);
     } catch (error) {
       if (isReadContextError(error)) {
         return res.status(error.status ?? 400).json(readContextErrorBody(error));

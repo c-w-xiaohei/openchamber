@@ -1,6 +1,5 @@
 const SESSION_COOLDOWN_DURATION_MS = 2000;
 const SESSION_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const SESSION_ATTENTION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION_ACTIVITY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION_STATE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -44,7 +43,6 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
   const sessionActivityPhases = new Map();
   const sessionActivityCooldowns = new Map();
   const sessionStates = new Map();
-  const sessionAttentionStates = new Map();
   // Pending permission requests and forms per session, kept from the same
   // upstream stream. Clients that do not initialize a directory cannot read
   // its pending list from OpenCode (that read creates a location), so this map
@@ -136,23 +134,6 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
     return result;
   };
 
-  const getOrCreateAttentionState = (sessionId) => {
-    if (!sessionId || typeof sessionId !== 'string') return null;
-
-    let state = sessionAttentionStates.get(sessionId);
-    if (!state) {
-      state = {
-        needsAttention: false,
-        lastUserMessageAt: null,
-        lastStatusChangeAt: Date.now(),
-        viewedByClients: new Set(),
-        status: 'idle',
-      };
-      sessionAttentionStates.set(sessionId, state);
-    }
-    return state;
-  };
-
   const setSessionActivityPhase = (sessionId, phase) => {
     if (!sessionId || typeof sessionId !== 'string') return false;
 
@@ -200,27 +181,11 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
     return true;
   };
 
-  const updateSessionAttentionStatus = (sessionId, status) => {
-    const state = getOrCreateAttentionState(sessionId);
-    if (!state) return;
-
-    const prevStatus = state.status;
-    state.status = status;
-    state.lastStatusChangeAt = Date.now();
-
-    if ((prevStatus === 'busy' || prevStatus === 'retry') && status === 'idle') {
-      if (state.lastUserMessageAt && state.viewedByClients.size === 0) {
-        state.needsAttention = true;
-      }
-    }
-  };
-
   const updateSessionState = (sessionId, status, eventId, metadata = {}) => {
     if (!sessionId || typeof sessionId !== 'string') return;
 
     const now = Date.now();
     const existing = sessionStates.get(sessionId);
-    const existingAttentionState = sessionAttentionStates.get(sessionId);
     const isRestartInterruption = metadata.reason === 'opencode-restart';
     if (existing && existing.lastUpdateAt > now - 5000 && status === existing.status && !isRestartInterruption) {
       return;
@@ -233,11 +198,8 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
       metadata: { ...existing?.metadata, ...metadata },
     });
 
-    updateSessionAttentionStatus(sessionId, status);
-    const attentionState = sessionAttentionStates.get(sessionId);
-    const attentionChanged = !!attentionState && existingAttentionState?.needsAttention !== attentionState.needsAttention;
     const clients = getNotificationClients();
-    if (!existing || existing.status !== status || attentionChanged || isRestartInterruption) {
+    if (!existing || existing.status !== status || isRestartInterruption) {
       const state = sessionStates.get(sessionId);
       const syntheticPayload = {
         type: 'openchamber:session-status',
@@ -246,7 +208,6 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
           status: state.status,
           timestamp: state.lastUpdateAt,
           metadata: state.metadata,
-          needsAttention: attentionState?.needsAttention ?? false,
         },
       };
 
@@ -285,82 +246,6 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
   const getSessionState = (sessionId) => {
     if (!sessionId) return null;
     return sessionStates.get(sessionId) || null;
-  };
-
-  const markSessionViewed = (sessionId, clientId) => {
-    const state = getOrCreateAttentionState(sessionId);
-    if (!state) return;
-
-    const wasNeedsAttention = state.needsAttention;
-    state.viewedByClients.add(clientId);
-
-    if (wasNeedsAttention) {
-      state.needsAttention = false;
-
-      const syntheticPayload = {
-        type: 'openchamber:session-status',
-        properties: {
-          sessionID: sessionId,
-          status: state.status,
-          timestamp: Date.now(),
-          metadata: {},
-          needsAttention: false,
-        },
-      };
-
-      if (typeof broadcastEvent === 'function') {
-        broadcastEvent(syntheticPayload);
-      } else {
-        const clients = getNotificationClients();
-        for (const res of clients) {
-          try {
-            writeSseEvent(res, syntheticPayload);
-          } catch {
-          }
-        }
-      }
-    }
-  };
-
-  const markSessionUnviewed = (sessionId, clientId) => {
-    const state = sessionAttentionStates.get(sessionId);
-    if (!state) return;
-    state.viewedByClients.delete(clientId);
-  };
-
-  const markUserMessageSent = (sessionId) => {
-    const state = getOrCreateAttentionState(sessionId);
-    if (!state) return;
-    state.lastUserMessageAt = Date.now();
-  };
-
-  const getSessionAttentionSnapshot = () => {
-    const result = {};
-    const now = Date.now();
-    for (const [sessionId, state] of sessionAttentionStates) {
-      if (now - state.lastStatusChangeAt > SESSION_ATTENTION_MAX_AGE_MS) continue;
-      result[sessionId] = {
-        needsAttention: state.needsAttention,
-        lastUserMessageAt: state.lastUserMessageAt,
-        lastStatusChangeAt: state.lastStatusChangeAt,
-        status: state.status,
-        isViewed: state.viewedByClients.size > 0,
-      };
-    }
-    return result;
-  };
-
-  const getSessionAttentionState = (sessionId) => {
-    if (!sessionId) return null;
-    const state = sessionAttentionStates.get(sessionId);
-    if (!state) return null;
-    return {
-      needsAttention: state.needsAttention,
-      lastUserMessageAt: state.lastUserMessageAt,
-      lastStatusChangeAt: state.lastStatusChangeAt,
-      status: state.status,
-      isViewed: state.viewedByClients.size > 0,
-    };
   };
 
   const getSessionActivitySnapshot = () => {
@@ -429,11 +314,6 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
         sessionStates.delete(sessionId);
       }
     }
-    for (const [sessionId, state] of sessionAttentionStates) {
-      if (now - state.lastStatusChangeAt > SESSION_ATTENTION_MAX_AGE_MS) {
-        sessionAttentionStates.delete(sessionId);
-      }
-    }
     for (const [sessionId, data] of sessionActivityPhases) {
       if (now - data.updatedAt <= SESSION_ACTIVITY_MAX_AGE_MS) continue;
       const timer = sessionActivityCooldowns.get(sessionId);
@@ -472,7 +352,6 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
     sessionActivityCooldowns.clear();
     sessionActivityPhases.clear();
     sessionStates.clear();
-    sessionAttentionStates.clear();
     pendingRequestsBySession.clear();
     activeSessionCount = 0;
   };
@@ -484,12 +363,7 @@ export const createSessionRuntime = ({ writeSseEvent, getNotificationClients, br
     getSessionStateSnapshot,
     getPendingBlockingRequestsSnapshot,
     trackWaitingPage,
-    getSessionAttentionSnapshot,
     getSessionState,
-    getSessionAttentionState,
-    markSessionViewed,
-    markSessionUnviewed,
-    markUserMessageSent,
     resetAllSessionActivityToIdle,
     interruptBusySessionsAfterRestart,
     dispose,

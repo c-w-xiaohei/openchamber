@@ -18,7 +18,7 @@ Keep `bridge.ts` as a thin orchestration layer that delegates message handling t
 - `bridge-git-special-runtime.ts`
   - Specialized Git flows (`pr-description`, `conflict-details`) and generation helpers.
   - Generation runs through OpenCode's `POST /api/experimental/generate`, which answers with the finished text. There is no throwaway session to create, poll and delete any more.
-  - Generation model choice lives in `bridge-git-generation-model.ts`: request model first, then the user's small-model override (`smallModelUseDefault === false` plus `smallModelOverride` as `provider/model`), then the model OpenCode's `title` agent is configured with (`agents.title.model`, read through `GET /api/agent/title`, the same step the server-side small-model resolver honors, skipped when the catalog lists that model as disabled), then the zen fallback; the catalog rule for every step is the one below. The old `gitProviderId`/`gitModelId` pair is no longer read.
+  - Generation model choice lives in `bridge-git-generation-model.ts`: request model first, then the user's small-model override (`smallModelUseDefault === false` plus `smallModelOverride` as `provider/model` and `smallModelVariant` as its thinking level), then the model and variant OpenCode's `title` agent is configured with (`agents.title.model`, read through `GET /api/agent/title`, the same step the server-side small-model resolver honors, skipped when the catalog lists that model as disabled), then the zen fallback; the catalog rule for every step is the one below. A saved variant is dropped only when the catalog knows the model and does not list it; an unlisted model keeps the chosen variant. The old `gitProviderId`/`gitModelId` pair is no longer read.
   - A catalog rejects a model only when it lists that model as disabled, which is the rule the server-side resolver applies: a config can outlive the login behind it, but a model the catalog does not list at all — a plugin provider still loading, or a cold location that answered before its providers did — is kept. Gating on "listed" dropped the user's configured small model on a cold start, sent generation to the zen default they cannot use, and the `Model unavailable` retry loop then retried that wrong model until it gave up.
   - Catalog reads, the title-agent read, and generation all name the flow's directory through the `x-opencode-directory` header, and the model catalog cache is keyed by that directory. OpenCode resolves models per location, so an unscoped read would answer for OpenCode's own working directory and reject models that work in the repository.
   - Specialized Git flows (`commit-message`, `pr-description`, `conflict-details`) and generation helpers.
@@ -372,14 +372,26 @@ Bridge surface (`bridge-config-runtime.ts`), matching the web routes:
 
 ## Session archive and metadata
 
-OpenCode 2.x has no route that archives a session, so archive flags are
-OpenChamber-owned state. `openchamberSessionState.ts` keeps the same
-`sessions-archive.json` the OpenChamber server keeps, in the shared OpenChamber
-config directory (`~/.config/openchamber`, `%APPDATA%\openchamber` on
-Windows), which is also the web server's default data directory: a session
-archived from VS Code is archived in the desktop app on the same machine, and
-the other way round. Nothing is cached between calls because two processes can
-write the file; every write re-reads first and replaces the file atomically.
+OpenCode holds archive state since 2.1, and `openchamberSessionState.ts` sends
+every archive and restore there first (`PATCH /api/session/{id}` with
+`archived`), so VS Code, the desktop app and the TUI share one archive.
+OpenCode answers `LocationNotFoundError` for a session whose directory was
+deleted, so that session moves to its project's main folder and is archived
+there, the same as on the web server
+(`packages/web/server/lib/openchamber-sessions/session-archive.js`). While it
+moves, and for good when it has no folder to move to, its state is in the
+`sessions-archive.json` the OpenChamber server keeps, in the shared OpenChamber config directory
+(`~/.config/openchamber`, `%APPDATA%\openchamber` on Windows), which is also
+the web server's default data directory. The file's entries win over
+OpenCode's record, so a session OpenCode took leaves the file, and the web
+server pushes entries an older version wrote. Nothing is cached between calls
+because two processes can write the file; every write re-reads first and
+replaces the file atomically.
+
+The unread baseline (`sessions-unread.json`, `{ since }`) is shared the same
+way: whichever of the server and the extension reads it first creates it, and
+both serve turns that ended before it as seen (`time.viewed` up to
+`time.idle`). Once read, it is cached, because nothing rewrites it.
 
 Session metadata lives on the OpenCode record (`PATCH /api/session/{id}`,
 OpenCode 2.0.15+). OpenCode replaces the whole object, so a write reads the

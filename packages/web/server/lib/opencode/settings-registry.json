@@ -190,6 +190,10 @@
       "scope": "instance",
       "computed": true
     },
+    "overviewFeatureAvailable": {
+      "scope": "instance",
+      "computed": true
+    },
     "routingFeatureAvailable": {
       "scope": "instance",
       "computed": true
@@ -569,7 +573,19 @@
     "smallModelOverride": {
       "scope": "profile"
     },
+    "smallModelVariant": {
+      "scope": "profile"
+    },
     "walkthroughModelOverride": {
+      "scope": "profile"
+    },
+    "fallbackModel": {
+      "scope": "profile"
+    },
+    "fallbackVariant": {
+      "scope": "profile"
+    },
+    "accountSwitchProviders": {
       "scope": "profile"
     },
     "zenModel": {

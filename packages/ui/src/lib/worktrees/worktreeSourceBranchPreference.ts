@@ -16,3 +16,14 @@ export const resolveDefaultSourceBranch = ({ branches, rootBranch }: WorktreeSou
   if (branches.includes('master')) return 'master';
   return branches[0] ?? '';
 };
+
+/**
+ * Where a branch on top of `branch` starts: its local copy, which may hold
+ * work not pushed yet, else its copy on `origin`, else on another remote.
+ * Empty when the repository has neither.
+ */
+export const resolveBranchOnTopSource = (branches: readonly string[], branch: string): string => {
+  if (branches.includes(branch)) return branch;
+  if (branches.includes(`remotes/origin/${branch}`)) return `remotes/origin/${branch}`;
+  return branches.find((candidate) => candidate.startsWith('remotes/') && candidate.split('/').slice(2).join('/') === branch) ?? '';
+};

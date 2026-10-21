@@ -333,7 +333,12 @@ const GITLAB_THREAD_URL_PATTERN = /^(https?:\/\/[^/\s]+)\/(.+)\/([^/\s]+)\/-\/(m
  */
 export const getGitLabThreadRef = (entry: LinkedIssue): GitLabThreadRef | null => {
   if (entry.kind === 'linear' || entry.kind === 'guest' || getGitHubThreadRef(entry)) return null;
-  const match = GITLAB_THREAD_URL_PATTERN.exec(entry.url.trim());
+  return parseGitLabThreadUrl(entry.url);
+};
+
+/** The GitLab merge request or issue an address names, or null. */
+export const parseGitLabThreadUrl = (url: string): GitLabThreadRef | null => {
+  const match = GITLAB_THREAD_URL_PATTERN.exec(url.trim());
   if (!match) return null;
   const number = Number(match[5]);
   if (!Number.isSafeInteger(number) || number < 1) return null;

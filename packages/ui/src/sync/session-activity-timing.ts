@@ -16,9 +16,10 @@ import { countSyncPerformance } from './performance-diagnostics';
 //
 // - `startedAt` — sessions observed active right now. Persisted, so reloading
 //   the page resumes the same count instead of restarting it at zero.
-// - `settledMs` — how long the turn that just finished took. In memory only:
-//   rows show it while the session is unread, and unread state itself does not
-//   survive a reload, so persisting it would outlive its only consumer.
+// - `settledMs` — how long the turn that just finished took, as this page
+//   measured it. In memory only: the server records the length on the session
+//   itself (`lib/sessionTurnMetadata.ts`), and that record is what a row shows
+//   after a reload, while the session stays unread.
 //
 // A persisted start is a lookup table, never a claim of activity. Nothing in
 // the protocol marks where a turn begins: the server calls `SessionStatus.set`
@@ -472,9 +473,10 @@ export const useSessionSettledDurationMs = (sessionId: string): number | undefin
 );
 
 /**
- * Whether a duration exists to render, without subscribing the caller to the
- * value itself — a row uses this to decide between the counter and its normal
- * metadata, and must not re-render every tick to do so.
+ * Whether this page measured a duration to render, without subscribing the
+ * caller to the value itself. Rows use `useHasSessionTurnDuration`
+ * (`session-turn-duration.ts`), which also counts the length the server
+ * recorded.
  */
 export const useHasSessionActivityDuration = (sessionId: string, running: boolean): boolean => (
   useSessionActivityTimingStore(useCallback((state) => (

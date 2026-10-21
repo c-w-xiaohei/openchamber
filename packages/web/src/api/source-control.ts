@@ -9,6 +9,7 @@ import type {
   ChangeRequestCommit,
   ChangeRequestContext,
   ChangeRequestVerdict,
+  PullRequestStack,
   ChangeRequestFile,
   ChangeRequestReviewComment,
   ChangeRequestStatus,
@@ -57,6 +58,7 @@ import type {
   SourceControlCreateMutationTarget,
   SourceControlExistingMutationTarget,
   SourceControlExpectedMutationTarget,
+  SourceControlCreateMutationResult,
   SourceControlMergeMutationResult,
   SourceControlMutationContext,
   SourceControlMutationReceipt,
@@ -184,6 +186,8 @@ interface MutationReceiptDTO extends ErrorResponse {
 interface MutationResultDTO {
   merged?: boolean;
   message?: string;
+  outcome?: string;
+  stacked?: boolean;
   ready?: boolean;
   commented?: boolean;
   state?: string;
@@ -539,13 +543,30 @@ const parseEmptyMutationResult = (result: MutationResultDTO): SourceControlEmpty
   return {};
 };
 
+const MERGE_OUTCOMES = ['queued', 'merging'] as const;
+const mergeOutcomeOf = (value: string): SourceControlMergeMutationResult['outcome'] | null => (
+  MERGE_OUTCOMES.find((outcome) => outcome === value) ?? null
+);
+
+const parseCreateMutationResult = (result: MutationResultDTO): SourceControlCreateMutationResult => {
+  if (!hasExactKeys(result, result.stacked === undefined ? [] : ['stacked'])
+    || (result.stacked !== undefined && !isBooleanValue(result.stacked))) {
+    throw new Error('Source control response contained an invalid create result');
+  }
+  return result.stacked === undefined ? {} : { stacked: result.stacked };
+};
+
 const parseMergeMutationResult = (result: MutationResultDTO): SourceControlMergeMutationResult => {
-  const keys = result.message === undefined ? ['merged'] : ['merged', 'message'];
+  const keys = ['merged', ...(result.message === undefined ? [] : ['message']), ...(result.outcome === undefined ? [] : ['outcome'])];
+  const outcome = result.outcome === undefined ? undefined : mergeOutcomeOf(result.outcome);
   if (!hasExactKeys(result, keys) || !isBooleanValue(result.merged)
-    || (result.message !== undefined && !isStringValue(result.message))) {
+    || (result.message !== undefined && !isStringValue(result.message)) || outcome === null) {
     throw new Error('Source control response contained an invalid merge result');
   }
-  return result.message === undefined ? { merged: result.merged } : { merged: result.merged, message: result.message };
+  const parsed: SourceControlMergeMutationResult = { merged: result.merged };
+  if (result.message !== undefined) parsed.message = result.message;
+  if (outcome !== undefined) parsed.outcome = outcome;
+  return parsed;
 };
 
 const parseReviewMutationResult = (result: MutationResultDTO): SourceControlReviewMutationResult => {
@@ -1122,6 +1143,37 @@ const parseSourceCommit = (commit: ChangeRequestCommit): ChangeRequestCommit => 
   return { sha: commit.sha, headline: commit.headline, authorName: commit.authorName, committedAt: commit.committedAt, url: commit.url };
 };
 
+const STACK_LAYER_STATES = ['open', 'closed', 'merged'] as const;
+
+/** A merge request chain as the server read it; its layers are bottom first. */
+const parseSourceStack = (stack: PullRequestStack): PullRequestStack => {
+  if (!stack || !isNonEmptyString(stack.base) || !Array.isArray(stack.layers)
+    || (stack.number !== null && !Number.isSafeInteger(stack.number))) {
+    throw new Error('Source control response contained an invalid merge request chain');
+  }
+  return {
+    number: stack.number,
+    base: stack.base,
+    layers: stack.layers.map((layer) => {
+      const state = STACK_LAYER_STATES.find((candidate) => candidate === layer?.state);
+      if (!layer || !Number.isSafeInteger(layer.number) || !isStringValue(layer.title) || !isHttpUrl(layer.url)
+        || !state || !isBooleanValue(layer.draft) || !isNonEmptyString(layer.head)) {
+        throw new Error('Source control response contained an invalid merge request chain');
+      }
+      return { number: layer.number, title: layer.title, url: layer.url, state, draft: layer.draft, head: layer.head };
+    }),
+  };
+};
+
+/** The stack a context names; one that does not hold together is unknown, never a failed read of the rest. */
+const parseOptionalStack = (stack: PullRequestStack): PullRequestStack | undefined => {
+  try {
+    return parseSourceStack(stack);
+  } catch {
+    return undefined;
+  }
+};
+
 const parseSourceVerdict = (verdict: ChangeRequestVerdict, identity: SourceControlIdentity): ChangeRequestVerdict => {
   if (!verdict || (verdict.state !== 'approved' && verdict.state !== 'changes_requested') || !isNonEmptyString(verdict.url)
     || (verdict.createdAt !== null && !isNonEmptyString(verdict.createdAt))) {
@@ -1585,7 +1637,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       if (payload.remote) body.remote = payload.remote;
       if (payload.headRemote) body.headRemote = payload.headRemote;
       const result = await post<MutationReceiptDTO>(fetch, identity, '/pr/create', body);
-      return parseMutationReceipt(result, payload, identity, parseEmptyMutationResult);
+      return parseMutationReceipt(result, payload, identity, parseCreateMutationResult);
     },
     changeRequestUpdate: async (payload: UpdateChangeRequestInput) => {
       const identity = normalizeIdentity(payload);
@@ -1678,8 +1730,11 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       });
       return parseMutationReceipt(result, payload, identity, parseEmptyMutationResult);
     },
-    refreshProviderReads: async (identity) => {
-      await request<ErrorResponse>(fetch, identity, '/read-cache/refresh', { method: 'POST' });
+    refreshProviderReads: async (identity, scope) => {
+      const query = 'item' in scope
+        ? new URLSearchParams({ scope: 'item', owner: scope.item.owner, repo: scope.item.repo, number: String(scope.item.number) })
+        : new URLSearchParams({ scope: 'lists' });
+      await request<ErrorResponse>(fetch, identity, '/read-cache/refresh', { method: 'POST' }, query);
     },
     referenceLabels: async (context, project) => parseLabelChoices(await readRepositoryChoices(fetch, context, project, '/references/labels')),
     referenceReviewers: async (context, project) => parseReviewerChoices(await readRepositoryChoices(fetch, context, project, '/references/reviewers')),
@@ -1741,6 +1796,11 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
           context.verdicts = (payload.verdicts ?? []).map((verdict) => parseSourceVerdict(verdict, normalized));
           if (payload.reviewers) context.reviewers = payload.reviewers.map((user) => parseSourceUser(user, normalized));
         }
+        if (payload.stack === null) context.stack = null;
+        else if (payload.stack !== undefined) {
+          const stack = parseOptionalStack(payload.stack);
+          if (stack) context.stack = stack;
+        }
         return context;
       }
       const payload = await request<GitHubPullRequestContextResult & ErrorResponse>(fetch, normalized, '/pulls/context', {}, query);
@@ -1763,6 +1823,9 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       if (payload.fetchedAt !== undefined) result.fetchedAt = payload.fetchedAt;
       if (payload.diff) result.diff = payload.diff;
       if (payload.checks) result.ci = parseSourceCI(mapChecks(payload.checks, payload.checkRuns), GITHUB_IDENTITY);
+      // Sent only for a layer of a stack.
+      const stack = payload.stack ? parseOptionalStack(payload.stack) : undefined;
+      if (stack) result.stack = stack;
       return result;
     },
 

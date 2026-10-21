@@ -144,7 +144,6 @@ type SessionProjectCollectionProps = {
       resetSessionSearch: () => void;
     };
     alwaysShowActions: boolean;
-    notifyOnSubtasks: boolean;
     setActiveProjectIdOnly: (id: string) => void;
     setSessionSwitcherOpen: (open: boolean) => void;
     openNewSessionDraft: (options?: { selectedProjectId?: string | null; directoryOverride?: string | null; preserveDirectoryOverride?: boolean }) => void;
@@ -165,7 +164,7 @@ type SessionProjectCollectionProps = {
 };
 
 const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topology, view, actions }) => {
-  const { alwaysShowActions, notifyOnSubtasks, projectViewActions, rowActions, ...scrollerActions } = actions;
+  const { alwaysShowActions, projectViewActions, rowActions, ...scrollerActions } = actions;
   const foldersMap = useSessionFoldersStore((state) => state.foldersMap);
   const collapsedFolderIds = useSessionFoldersStore((state) => state.collapsedFolderIds);
   const createFolder = useSessionFoldersStore((state) => state.createFolder);
@@ -804,7 +803,6 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     mobileVariant: view.mobileVariant,
     alwaysShowActions,
     activeProjectId: view.activeProjectId,
-    notifyOnSubtasks,
     pinnedSessionIds: collection.pinnedSessionIds,
     sessionOrderIndex,
     expandedParents,
@@ -829,7 +827,6 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
   }), [
     collection.pinnedSessionIds,
     alwaysShowActions,
-    notifyOnSubtasks,
     projectView.collapsedGroups,
     groupSearchDataByGroup,
     sessionOrderIndex,
@@ -923,7 +920,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     groupStatusByKey,
     folderAuthorityByOwner,
     activeProjectId: view.activeProjectId,
-    singleProjectMode: singleProjectMode && !timelineMode,
+    singleProjectMode,
     singleProjectId: selectedSingleProjectId,
     showOnlyMainWorkspace: view.showOnlyMainWorkspace,
     hideDirectoryControls: view.hideDirectoryControls,

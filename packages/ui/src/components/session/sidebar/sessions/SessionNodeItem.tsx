@@ -65,8 +65,8 @@ import { formatChangeRequestReference } from '@/lib/source-control/identity';
 import { refTintStyle } from '@/lib/source-control/prVisualState';
 import { getLinkedGitHubPullRequests, getLinkedSidebarChanges, getLinkedSidebarIssues, type LinkedGitHubPullRequest, type LinkedSidebarChange, type LinkedSidebarIssue } from '@/lib/linkedIssues';
 import { buildSessionIssueItems, combineSessionPrSummaries, findLinkedPrsWithoutState } from './sessionPrSummaries';
-import { useSessionUnseenCount } from '@/sync/notification-store';
-import { useHasSessionActivityDuration } from '@/sync/session-activity-timing';
+import { useSessionUnread } from '@/sync/session-unread';
+import { useHasSessionTurnDuration } from '@/sync/session-turn-duration';
 import { SessionActivityDuration } from '@/components/session/SessionActivityDuration';
 import { useSessionMultiSelectStore } from '@/stores/useSessionMultiSelectStore';
 import { useI18n } from '@/lib/i18n';
@@ -119,7 +119,6 @@ export type SessionNodeItemProps = {
   expandedParents: Set<string>;
   hasSessionSearchQuery: boolean;
   normalizedSessionSearchQuery: string;
-  notifyOnSubtasks: boolean;
   editingId: string | null;
   editingRowKey: string | null;
   setEditingId: (id: string | null) => void;
@@ -318,7 +317,6 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
     expandedParents,
     hasSessionSearchQuery,
     normalizedSessionSearchQuery,
-    notifyOnSubtasks,
     editingId,
     editingRowKey,
     setEditingId,
@@ -639,7 +637,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
   const isStreaming = turnActivity !== null;
   // Read as a boolean, not as the value: the row must not re-render on every
   // tick of the counter it only decides to mount.
-  const hasActivityDuration = useHasSessionActivityDuration(session.id, isStreaming);
+  const hasActivityDuration = useHasSessionTurnDuration(session.id, isStreaming);
   const isMovingToWorktree = useIsSessionWorktreeMovePending(session.id);
   const isAiRenaming = useIsSessionAiRenamePending(session.id, sessionDirectory);
   const isSessionActionPending = isMovingToWorktree || isAiRenaming;
@@ -703,8 +701,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
     hasForm: hasPendingForm,
   } = useSessionBlockingRequests(blockingBadgeSessionScopes);
   const isSubtaskSession = Boolean(resolvedSession.parentID);
-  const unseenCount = useSessionUnseenCount(session.id);
-  const needsAttention = unseenCount > 0 && (!isSubtaskSession || notifyOnSubtasks);
+  const needsAttention = useSessionUnread(session.id);
   // The last conversation, as the list orders by: a rename or a metadata
   // write must not make an old session read as just used.
   const sessionTimestamp = getSessionActivityTime(resolvedSession) || Date.now();
@@ -1030,8 +1027,8 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
   // width less the 6px they sit nearer the row edge (16px buttons, 20px on
   // two-line timeline rows, 2px apart).
   const actionsReserveClass = isTimelineRow && !isOneLineTimelineRow
-    ? ['[--oc-actions-reserve:14px]', '[--oc-actions-reserve:36px]', '[--oc-actions-reserve:58px]', '[--oc-actions-reserve:80px]'][extraHoverActions]
-    : ['[--oc-actions-reserve:10px]', '[--oc-actions-reserve:28px]', '[--oc-actions-reserve:46px]', '[--oc-actions-reserve:64px]'][extraHoverActions];
+    ? ['[--oc-actions-reserve:0.875rem]', '[--oc-actions-reserve:2.25rem]', '[--oc-actions-reserve:3.625rem]', '[--oc-actions-reserve:5rem]'][extraHoverActions]
+    : ['[--oc-actions-reserve:0.625rem]', '[--oc-actions-reserve:1.75rem]', '[--oc-actions-reserve:2.875rem]', '[--oc-actions-reserve:4rem]'][extraHoverActions];
   // An open row menu (dropdown or right-click) keeps the actions shown, so
   // what they cover gives way too, hover or not.
   const actionsMaskClass = alwaysShowActions
@@ -2194,7 +2191,6 @@ const sessionNodeItemPropsChange = (prev: SessionNodeItemProps, next: SessionNod
   if (prev.alwaysShowActions !== next.alwaysShowActions) return 'alwaysShowActions';
   if (prev.hasSessionSearchQuery !== next.hasSessionSearchQuery) return 'hasSessionSearchQuery';
   if (prev.normalizedSessionSearchQuery !== next.normalizedSessionSearchQuery) return 'normalizedSessionSearchQuery';
-  if (prev.notifyOnSubtasks !== next.notifyOnSubtasks) return 'notifyOnSubtasks';
   if (prev.nodeStructureKey !== next.nodeStructureKey) return 'nodeStructureKey';
   if (prev.relativeTimeTick !== next.relativeTimeTick) return 'relativeTimeTick';
   if (getNodeSessionDirectory(prev.node) !== getNodeSessionDirectory(next.node)) return 'nodeDirectory';

@@ -126,6 +126,20 @@ const referenceDetailResultSchema = z.discriminatedUnion('connected', [
           url: z.string().nullable(),
         })).default([]),
         commitTotal: z.number().nullable().default(null),
+        // Absent when the host could not say, or said something that does not
+        // hold together; null when the PR is in no stack. Never fails the detail.
+        stack: z.object({
+          number: z.number().nullable(),
+          base: z.string(),
+          layers: z.array(z.object({
+            number: z.number(),
+            title: z.string(),
+            url: z.string(),
+            state: z.enum(['open', 'closed', 'merged']),
+            draft: z.boolean(),
+            head: z.string(),
+          })),
+        }).nullable().optional().catch(undefined),
       }).nullable(),
     }).nullable(),
   }),

@@ -44,6 +44,7 @@ import { getImperativeSessionMessageLoader } from "./session-message-loader"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
 import { requestSessionArchiveBatch, requestSessionLinksUpdate, requestSessionMetadataUpdate, requestSessionUnarchiveBatch, type SessionArchiveStamp } from "./session-archive-batch"
 import { registerBulkArchiveEchoes, releaseBulkArchiveEchoes } from "./bulk-archive-echo"
+import { markSessionUnreadSeen } from "./session-unread"
 import { getRuntimeKey } from "@/lib/runtime-switch"
 import { isRelayModeActive } from "@/lib/relay/runtime-tunnel"
 import { getErrorStatus, isAmbiguousSendFailure } from "./send-failure-classification"
@@ -1848,6 +1849,9 @@ async function restoreArchivedSession(sessionId: string, expectedRuntimeKey: str
     }
     const restored = withArchivedAt(sessionId, null)
     if (restored) useGlobalSessionsStore.getState().upsertSession(restored)
+    // Archiving put away whatever the session last did, so a restored session
+    // does not come back unread.
+    markSessionUnreadSeen(sessionId)
     if (sessionDirectory) registerSessionDirectory(sessionId, sessionDirectory)
     promoteRestoredSessionOrdering(sessionId)
     // Archive discarded this session's status. An older directory snapshot

@@ -125,7 +125,8 @@ const openchamberStatusSchema = z.object({
   }),
 })
 
-// OpenChamber owns archive state; its server announces changes on the stream.
+// Archive changes the server's archive file made (a session leaving it, or one
+// with no folder to move to); OpenCode announces its own record's changes.
 const openchamberArchivedSchema = z.object({
   type: z.literal("openchamber:session-archived"),
   properties: z.object({ sessionID: z.string().min(1), archivedAt: z.number().nullable() }),

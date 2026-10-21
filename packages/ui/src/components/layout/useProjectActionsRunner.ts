@@ -15,7 +15,6 @@ import { useDesktopSshStore } from '@/stores/useDesktopSshStore';
 import { openExternalUrl } from '@/lib/url';
 import { useI18n } from '@/lib/i18n';
 import {
-  getProjectActionsState,
   getProjectSetup,
   type OpenChamberProjectAction,
   type ProjectSetup,
@@ -761,14 +760,19 @@ export const useProjectActionsRunner = ({
 
     try {
       const discovered = action.id === AUTO_DISCOVER_ACTION_ID
-        ? await (async (): Promise<OpenChamberProjectAction> => {
-          const [actionsState, scripts] = await Promise.all([
-            getProjectActionsState({ id: stableProjectRef?.id ?? '', path: normalizedDirectory }),
+        ? await (async (): Promise<OpenChamberProjectAction | null> => {
+          const [setup, scripts] = await Promise.all([
+            getProjectSetup({ id: stableProjectRef?.id ?? '', path: normalizedDirectory }),
             readPackageJsonScripts(normalizedDirectory),
           ]);
-          const devServer = await detectDevServerCommand(normalizedDirectory, actionsState.actions, scripts);
+          const devServer = await detectDevServerCommand(normalizedDirectory, setup.projectActions, scripts);
           if (!devServer) {
             throw new Error(t('contextPanel.preview.noDevServer'));
+          }
+          const savedAction = setup.projectActions.find((entry) => entry.id === devServer.actionId);
+          if (savedAction?.source === 'shared'
+            && !(await ensureSharedSetupTrusted({ id: stableProjectRef?.id ?? '', path: normalizedDirectory }, setup))) {
+            return null;
           }
           return {
             id: AUTO_DISCOVER_ACTION_ID,
@@ -780,6 +784,7 @@ export const useProjectActionsRunner = ({
           };
         })()
         : action;
+      if (!discovered) return;
 
       const hasCustomOpenUrl = discovered.autoOpenUrl === true && (discovered.openUrl || '').trim().length > 0;
       const revealTerminal = !hasCustomOpenUrl && action.id !== AUTO_DISCOVER_ACTION_ID;

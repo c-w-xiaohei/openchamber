@@ -46,6 +46,10 @@ This module owns GitLab instance validation, authentication, remote resolution, 
 - `GET /uploads/:secret/:filename` (read context plus `owner`/`repo` in the query) streams a Markdown attachment of a project in the bound network through `GET /projects/:id/uploads/:secret/:filename`, which any member with the Guest role can read. `client.js` `createGitLabDownloader` sends the credential to the instance only and follows a storage redirect once without it, over HTTPS or on the instance; `Range` passes through for seeking. The uploads API answers every file as `application/octet-stream`, so for that type (or none) the file name's extension picks the media type. Only raster images and MP4/WebM/QuickTime video are served, with `nosniff` and a sandboxing CSP, so an uploaded page or SVG never runs on this server's origin. A refused file answers 404 and never invalidates the account. The route accepts the URL auth token, since `img` and `video` cannot send headers.
 - Shared picker and sidebar consumers select GitLab only from a matching repository remote. Self-managed hosts must already appear in source-control instance discovery; unknown hosts are never inferred as GitLab.
 
+## Merge request chains
+
+GitLab has no stack object. A merge request's chain is read with its context (`changeRequestContext`, `readChain`): the open merge request whose source branch it targets, the one below that, and so on, and the open merge request targeting its source branch, and so on, each link one list request, at most 10 each way, as far as each link is the only open merge request there (two on one branch fork the chain, which stops). It answers as GitHub's stack does, `{ number: null, base, layers }` bottom first, `null` when it has no neighbours, and leaves `stack` out when a read failed.
+
 ## Structure
 
 - `instance.js`: instance origin normalization and transport policy.

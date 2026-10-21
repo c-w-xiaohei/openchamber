@@ -310,7 +310,37 @@ describe('fetchReferenceDetail', () => {
         url: 'https://github.com/acme/app/commit/abc1234',
       }],
       commitTotal: 1,
+      stack: null,
     });
+  });
+
+  it('reads the stack a PR is a layer of, bottom first, and leaves it unknown where the host has none', async () => {
+    const layer = (number, position, state = 'OPEN') => ({
+      position,
+      pullRequest: { number, title: `Layer ${number}`, url: `https://github.com/acme/app/pull/${number}`, state, isDraft: false, headRefName: `layer-${number}` },
+    });
+    const stacked = { ...pull(), stack: { number: 4, baseRefName: 'main', entries: { nodes: [layer(12, 2), layer(11, 1, 'MERGED'), layer(13, 3)] } } };
+    const detail = await fetchReferenceDetail({ octokit: graphqlReturning(stacked), owner: 'acme', repo: 'app', number: 12 });
+    expect(detail?.pull?.stack).toEqual({
+      number: 4,
+      base: 'main',
+      layers: [
+        { number: 11, title: 'Layer 11', url: 'https://github.com/acme/app/pull/11', state: 'merged', draft: false, head: 'layer-11' },
+        { number: 12, title: 'Layer 12', url: 'https://github.com/acme/app/pull/12', state: 'open', draft: false, head: 'layer-12' },
+        { number: 13, title: 'Layer 13', url: 'https://github.com/acme/app/pull/13', state: 'open', draft: false, head: 'layer-13' },
+      ],
+    });
+
+    // An older GitHub Enterprise Server has no stacks: the detail still answers.
+    const octokit = {
+      graphql: async (query) => {
+        if (query.includes('PullStack')) throw new Error("Field 'stack' doesn't exist on type 'PullRequest'");
+        return { repository: { issueOrPullRequest: pull() } };
+      },
+    };
+    const withoutStacks = await fetchReferenceDetail({ octokit, owner: 'acme', repo: 'app', number: 9 });
+    expect(withoutStacks?.pull).not.toHaveProperty('stack');
+    expect(withoutStacks?.pull?.additions).toBe(12);
   });
 
   it('reads a review thread as its first comment with the replies under it', async () => {

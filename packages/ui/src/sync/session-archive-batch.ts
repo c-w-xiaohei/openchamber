@@ -7,12 +7,12 @@
  * the OpenChamber server to archive the whole batch next to OpenCode, so the
  * browser spends one request and reconciles once.
  *
- * OpenCode 2.x has no HTTP route that sets `time.archived` or rewrites a
- * session's metadata after creation, so OpenChamber keeps both itself, next to
- * OpenCode, per data directory. These routes are an OpenChamber capability, not
- * an OpenCode one. Runtimes that do not serve them (the VS Code webview has no
- * server process) answer with a stable unsupported status, and callers fall
- * back to a per-session path or report failure.
+ * The server sets archive state on OpenCode's record and keeps it in its own
+ * archive file for sessions OpenCode cannot change (their directory is gone);
+ * metadata is merge-patched onto OpenCode's record. The batch, the fallback and
+ * the merge are OpenChamber's, so these are OpenChamber routes. Runtimes that do
+ * not serve them answer with a stable unsupported status, and callers fall back
+ * to a per-session path or report failure.
  */
 
 import type { JsonValue, Metadata } from "@/lib/opencode/model"

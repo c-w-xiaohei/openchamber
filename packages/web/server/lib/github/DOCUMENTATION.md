@@ -90,6 +90,15 @@
 - The route then enriches that result with checks, mergeability, and permission-related fields.
 - The client caches and shares the result between sidebar and Git view.
 
+## Stacked pull requests
+
+GitHub keeps a chain of PRs, each targeting the branch of the one below, as a stack (`stack` / `stackEntry` in GraphQL, `/repos/{o}/{r}/stacks` in REST).
+
+- `references/detail` answers a PR's stack beside its detail (`fetchPullStack`, its own query so a host without stacks, such as an older GitHub Enterprise Server, fails it alone): `{ number, base, layers }`, bottom layer first; `null` in none, absent when it could not be read. `pulls/context` adds the same `stack` for a PR GitHub marks as stacked, so an agent given the PR knows its layers.
+- Merge goes through `PUT /pulls/{n}/merge-async`, the only endpoint that merges a stacked PR (with its open layers below it) or enters a merge queue. The answer is followed for up to 20 s: `merged` reports `{ merged: true }`, a queue `{ merged: false, outcome: 'queued' }`, one still running `{ merged: false, outcome: 'merging' }` (the PR's live state shows the rest), a failure GitHub's reason as a refused mutation. A host without the endpoint (404) merges through the classic `PUT /merge`.
+- Creating a PR whose base is another open PR's branch in the same repository adds it to that PR's stack (`POST /stacks/{n}/add`, or `POST /stacks` with both when there is none). The create result says `stacked: true`, or `stacked: false` when GitHub refused (the parent is not its stack's top layer, a host without stacks); the PR stands on its base either way. A create interrupted after GitHub made the PR (a dropped connection, a restart) finishes the same way when its PR is found again: a PR already in a stack reads `stacked: true` without another write, one that is not joins its parent's stack as above.
+- GitHub has no API for its own Rebase stack, and rebasing layer by layer through `updatePullRequestBranch` can replay a rewritten lower layer's old commits, so the app links to the PR's page for it.
+
 ## Bound issues and repository metadata
 
 - Issue lists and upstream detection start at the trusted primary remote. Branch selectors and optional issue detail selectors must match that repository or one of its parent/source repositories.
@@ -134,7 +143,7 @@ that page, so callers cannot mistake a partial page for a complete one.
 ## Batched live summaries
 
 - `fetchPrSummaries` (`pr-summaries.js`) reads the live state of PRs and issues already known by number, up to `100` `{ owner, repo, number }` in total, for the tracked-items service (`../tracked-items/`), which calls it with the account a branch's repository is bound to or, for linked items, the current github.com account. It has no route of its own. It answers `{ summaries, issueSummaries }`. An issue reads `open`, `completed`, or `not_planned` (GitHub's `NOT_PLANNED` and `DUPLICATE` close reasons); a PR number asked as an issue is simply absent.
-- It sends one GraphQL document per `25` PRs, one after another. Each alias reads state, draft, title, head sha, `mergeable`, `mergeStateStatus` (lowercased, same values as REST `mergeable_state`) and up to `100` check contexts of the head commit. GitHub prices such a document at one point of the GraphQL budget (measured), which is separate from the REST limit.
+- It sends one GraphQL document per `25` PRs, one after another. Each alias reads state, draft, title, head sha, base branch (`base`, so a PR retargeted on GitHub, such as a stack layer whose lower layer merged, reaches the branch's status and Changes' base within one follow), `mergeable`, `mergeStateStatus` (lowercased, same values as REST `mergeable_state`) and up to `100` check contexts of the head commit. GitHub prices such a document at one point of the GraphQL budget (measured), which is separate from the REST limit.
 - Checks go through the same summarizers as the REST routes (`checks-summary.js`), so sidebar, chat and Git view count the same runs. Do not switch to the rollup's `state` or `checkRunCountsByState`: both still count a failed run that a later re-run superseded, which paints a green PR as failing. A closed/merged PR gets `checks: null`.
 - A PR GitHub cannot resolve (deleted, lost access) is left out of `summaries`: absence means unknown, never closed. Partial GraphQL answers keep the resolved aliases.
 - A GraphQL `RATE_LIMITED` error (HTTP 200) records the shared rate-limit cooldown like a REST 403/429; while the cooldown runs the tracked-items reader does not call GitHub.
@@ -235,7 +244,7 @@ that page, so callers cannot mistake a partial page for a complete one.
 - Aggregation is by bound repository authority plus directory and branch, so account or binding changes cannot reuse old status.
 - If multiple entries exist, sidebar keeps the strongest visible PR state.
 - Visual state is based on PR health, not merge permissions.
-- Orange (`blocked`) means not good yet: failed checks or conflicts (`mergeable: false`, `dirty`) to fix, or checks still running to wait for. The status line names which, in that order: "Merge conflicts", "Checks failing", "Checks running". A `blocked` merge state alone, which usually means a required review is missing, keeps the open colour and never reads "Ready to merge". Sidebar, Git view and Git header apply the same rule.
+- Orange (`blocked`) means something to fix: failed checks or conflicts (`mergeable: false`, `dirty`). The status line names which, in that order: "Merge conflicts", "Checks failing". Checks still running keep the open colour, without any extra mark: a second "waiting" signal only raised the question of what is waiting. Their status line reads "Checks running", never "Ready to merge". A `blocked` merge state alone, which usually means a required review is missing, also keeps the open colour and never reads "Ready to merge". Sidebar, Git view and Git header apply the same rule.
 
 ## Git view behavior
 

@@ -1303,6 +1303,18 @@ describe("branch PR live state pushed by the server", () => {
     expect(useGitHubPrStatusStore.getState().entries[key]?.status?.checks?.state).toBe("failure")
   })
 
+  test("a PR retargeted on the host takes its new base, which Changes compares against", () => {
+    const key = boundKey("feature")
+    seed(key, openStatus({ pr: { ...openStatus().pr!, base: "layer-one" } }))
+    pushFor(key, liveSummary({ base: "main" }))
+    const status = useGitHubPrStatusStore.getState().entries[key]?.status
+    expect(status?.pr?.base).toBe("main")
+    // A summary that does not name its base leaves the known one.
+    const before = useGitHubPrStatusStore.getState().entries
+    pushFor(key, liveSummary())
+    expect(useGitHubPrStatusStore.getState().entries).toBe(before)
+  })
+
   test("a PR shared by several keys updates every key; another account's entry stays", () => {
     const automatic = boundKey("feature", "origin")
     const upstream = boundKey("feature", "upstream")

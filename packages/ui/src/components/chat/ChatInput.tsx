@@ -156,7 +156,7 @@ import {
     classifyMention,
     scanMentions,
 } from './composer/language/mentions';
-import { collectKnownTokenNames } from './composer/language/prefixTokens';
+import { collectKnownTokenNames, lastPrefixSigilIndex } from './composer/language/prefixTokens';
 import { resolveAutocompleteTrigger, type AutocompleteKind } from './composer/language/triggers';
 import { type ComposerLanguageContext } from './composer/language/tokenize';
 import {
@@ -3308,16 +3308,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const textarea = composerRef.current;
         const cursorPosition = textarea?.getSelection().start ?? message.length;
         const textBeforeCursor = message.substring(0, cursorPosition);
-        const lastDollarSymbol = textBeforeCursor.lastIndexOf('$');
+        const skillSigilIndex = lastPrefixSigilIndex(textBeforeCursor, '$');
 
-        if (lastDollarSymbol !== -1) {
+        if (skillSigilIndex !== -1) {
             const newMessage =
-                message.substring(0, lastDollarSymbol) +
+                message.substring(0, skillSigilIndex) +
                 `$${skillName} ` +
                 message.substring(cursorPosition);
             setMessage(newMessage);
 
-            const nextCursor = lastDollarSymbol + skillName.length + 2;
+            const nextCursor = skillSigilIndex + skillName.length + 2;
             requestAnimationFrame(() => {
                 if (composerRef.current) {
                     composerRef.current.setSelection(nextCursor);

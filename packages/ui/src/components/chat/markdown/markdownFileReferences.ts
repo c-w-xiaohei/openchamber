@@ -30,7 +30,7 @@ export function useOpenMarkdownFile() {
   const editor = apis?.editor;
   const isVSCode = apis?.runtime.isVSCode;
   return React.useCallback(async (raw: string, path?: string, external = false) => {
-    const reference = resolveMarkdownFile(raw, directory);
+    const reference = resolveMarkdownFile(raw, directory, 'click');
     if (!reference) return;
     const target = path ?? reference.resolvedPath;
     if (external && isDesktopLocalOriginActive() && await openDesktopPath(target)) return;
@@ -41,13 +41,30 @@ export function useOpenMarkdownFile() {
   }, [directory, editor, isVSCode]);
 }
 
-export function resolveMarkdownFile(raw: string, directory: string) {
+const KNOWN_FILE_BASENAMES = new Set(['dockerfile', 'makefile', 'readme', 'license', '.env', '.gitignore', '.npmrc']);
+
+// Clicks keep the broad rules so a file-looking link never falls through to
+// its target="_blank" default (#3858). Probes are automatic and skip emails
+// and digit-leading suffixes such as `user@gmail.com`, `v1.2.3` or `93.00`.
+type FileReferencePurpose = 'probe' | 'click';
+
+const isLikelyFilePath = (path: string, purpose: FileReferencePurpose): boolean => {
+  if (!path || path.startsWith('--') || path.includes('://') || /[<>]/.test(path) || /\s{2,}/.test(path)) return false;
+  if (purpose === 'probe' && path.includes('@')) return false;
+  const normalized = normalizeReferencePath(path);
+  const name = normalized.split('/').filter(Boolean).pop() ?? '';
+  if (!name || name === '.' || name === '..') return false;
+  const lower = name.toLowerCase();
+  if (KNOWN_FILE_BASENAMES.has(lower) || (lower.startsWith('.') && lower.length > 1)) return true;
+  if (name.endsWith('.')) return false;
+  return purpose === 'click' ? /\.[A-Za-z0-9_-]{1,16}$/.test(name) : /\.[A-Za-z][A-Za-z0-9_-]{0,15}$/.test(name);
+};
+
+export function resolveMarkdownFile(raw: string, directory: string, purpose: FileReferencePurpose = 'probe') {
   // Most code tokens are paths, not URLs. Avoid constructing and throwing a URL
   // for every ordinary identifier/path in a highlighted fence.
   const reference = parseFileReference(/^\s*file:/i.test(raw) ? localPathFromFileUrl(raw) ?? raw : raw);
-  if (!reference || !directory || reference.path.includes('://') || /[<>]/.test(reference.path)) return null;
-  const name = reference.path.split(/[\\/]/).pop() ?? '';
-  if (!/\.[\w-]{1,16}$/.test(name) && !['dockerfile', 'makefile', 'readme', 'license'].includes(name.toLowerCase()) && !name.startsWith('.')) return null;
+  if (!reference || !directory || !isLikelyFilePath(reference.path, purpose)) return null;
   const path = isAbsoluteFilePath(reference.path) ? normalizeReferencePath(reference.path) : toAbsoluteFilePath(directory, reference.path);
   return path ? { ...reference, resolvedPath: path } : null;
 }

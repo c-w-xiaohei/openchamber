@@ -10,13 +10,16 @@ import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { fileContentSearchI18n } from './file-content-search.i18n';
+import { fileEditorAidsI18n } from './file-editor-aids.i18n';
 import { htmlRenderI18n } from './html-render.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
 import { sessionWarmingI18n } from './session-warming.i18n';
+import { overviewI18n } from './overview.i18n';
 import { isolatedSpacesI18n } from './isolated-spaces.i18n';
 import { sourceBoardI18n } from './source-board.i18n';
+import { stacksI18n } from './stacks.i18n';
 import { projectActionsI18n } from './project-actions.i18n';
 import { gitIdentityEditorI18n } from './git-identity-editor.i18n';
 import { environmentI18n } from './environment.i18n';
@@ -144,13 +147,16 @@ export const dict: Record<I18nKey, string> = {
   ...surfacePanelI18n.ko,
   ...fileArtifactsI18n.ko,
   ...fileContentSearchI18n.ko,
+  ...fileEditorAidsI18n.ko,
   ...htmlRenderI18n.ko,
   ...sessionNoticesI18n.ko,
   ...usageStatsI18n.ko,
   ...webSearchI18n.ko,
   ...sessionWarmingI18n.ko,
+  ...overviewI18n.ko,
   ...isolatedSpacesI18n.ko,
   ...sourceBoardI18n.ko,
+  ...stacksI18n.ko,
   ...projectActionsI18n.ko,
   ...gitIdentityEditorI18n.ko,
   ...environmentI18n.ko,
@@ -3855,4 +3861,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': '이 작업은 이미 실행 중입니다',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': '이 작업은 이미 대기열에 있으며 자리가 나면 실행됩니다',
   'chat.modelControls.agentFavoriteAdd': '즐겨찾기에 추가. 즐겨찾기가 있으면 Tab은 그 안에서만 전환합니다',
+  'notifications.error.bodyFallback': '오류가 발생했습니다',
+  'notifications.question.bodyFallback': '에이전트가 답변을 기다리고 있습니다',
+  'notifications.permission.bodyFallback': '에이전트가 승인을 기다리고 있습니다',
+  'notifications.permission.title': '권한 필요',
 };

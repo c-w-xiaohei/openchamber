@@ -262,6 +262,47 @@ An agent can ask for a file to be shown (`file.open` on the managed
 opens the files drawer. VS Code has no shared file viewer and no managed
 tool, so the event never reaches it.
 
+## Editor aids
+
+The text editor's helpers live in `lib/codemirror/` and need no language
+server; `FilesView` assembles them. What the syntax tree or git can answer
+is shown, nothing that needs type information.
+
+- **Git changes.** `gitChangeGutter` diffs the document against the file's git
+  baseline after typing pauses. A click on a bar opens that change in place:
+  the changed lines are tinted, the baseline lines show under them, and
+  Revert puts them back as an ordinary edit, so undo, autosave and the
+  external-change guard treat it like typing. Escape or the close button
+  hides it; a later diff keeps it open while the change still exists.
+  Read-only files show no Revert.
+- **Indent guides** draw one faint line per indent step on the lines in view,
+  at multiples of the width the file itself uses (the most common step
+  between lines), so a 4-space file does not get guides every 2 columns.
+- **Sticky scope** (desktop) pins the first line of each function or class
+  whose body fills the top of the editor, up to three, innermost kept.
+- **Import links.** Cmd+click (Ctrl+click elsewhere) on a relative import path
+  in JS/TS opens the file it names, trying the extensions a bundler tries;
+  holding the key underlines the path. Elsewhere that click still adds a
+  cursor.
+- **JSON errors** (`.json`, `.jsonc`, `.geojson`) underline the first place the
+  file stops parsing.
+
+### Why import links stop at relative paths
+
+`./` and `../` paths name a file; aliases (`@/lib/x`) and packages need the
+project's resolver settings, and a jump that guesses was ruled out. Go to
+definition for symbols needs a language server, which was ruled out as too
+heavy; OpenCode's own LSP served the agent only and is not a source for it.
+
+### Why JSON errors accept comments and trailing commas
+
+tsconfig, VS Code settings and `opencode.json` allow them under a `.json`
+name. Flagging them would be wrong far more often than missing a trailing
+comma in a strict file, so the check blanks both before parsing, keeping
+offsets, and reports only the first error: the parser's recovery after it is
+noise. JSON5 and JSON Lines are not checked. The JSON tree view parses every
+file the same way, so a tsconfig opens as a tree.
+
 ## Canvas editors
 
 A "canvas" is an editor with its own document model instead of the text

@@ -463,8 +463,14 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       await configureRepositoryTransport(directory, { credentialHelper, sshCommand });
     };
     // Shared short-lived answers for provider reads; registered before the
-    // GitHub, GitLab and Linear routes it fronts.
-    const providerReadCache = createProviderReadCache();
+    // GitHub, GitLab and Linear routes it fronts. A change made through them,
+    // or a refresh the user asked for, also reads the followed items again;
+    // the tracked items service is created further down.
+    let trackedItemsService = null;
+    const providerReadCache = createProviderReadCache({
+      onChange: (provider) => trackedItemsService?.refreshProvider(provider),
+      onItemRefresh: (provider, item) => trackedItemsService?.refreshItem(provider, item),
+    });
     app.use(providerReadCache.middleware);
     walkthroughBindingService = registerSourceControlRoutes(app, {
       onRepositoryTransportChanged: syncRepositoryTransport,
@@ -505,7 +511,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       }
       return null;
     };
-    const trackedItemsService = createTrackedItemsService({
+    trackedItemsService = createTrackedItemsService({
       readers: createTrackedItemReaders({ readGitLabLiveSummaries: walkthroughBindingService.readGitLabLiveSummaries }),
       persistence: createTrackedItemsPersistence({ dataDir: openchamberDataDir }),
       isConnectionOpen: (connectionId) => findEventClient(connectionId) !== null,

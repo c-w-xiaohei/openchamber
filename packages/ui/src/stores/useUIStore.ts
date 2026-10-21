@@ -935,6 +935,7 @@ interface UIStore {
   isUsageStatsPageOpen: boolean;
   /** The issues and pull requests board. */
   isSourceBoardOpen: boolean;
+  isOverviewOpen: boolean;
   openGuestPageId: string | null;
   worktreesPageProjectId: string | null;
   /** The project whose isolated spaces fill the main area, opened from its menu in the sidebar. */
@@ -1121,6 +1122,8 @@ interface UIStore {
    * for the same reason as the memory flag.
    */
   routingFeatureAvailable: boolean;
+  /** Whether the overview page exists at all; the server says, from `OPENCHAMBER_OVERVIEW_ENABLED`. */
+  overviewFeatureAvailable: boolean;
   /**
    * When the user last looked at each memory scope, keyed by scope. Drives the
    * new/changed badges; there is no stored review state.
@@ -1253,6 +1256,7 @@ interface UIStore {
   setIntegrationsCatalogOpen: (open: boolean) => void;
   setUsageStatsPageOpen: (open: boolean) => void;
   setSourceBoardOpen: (open: boolean) => void;
+  setOverviewOpen: (open: boolean) => void;
   setOpenGuestPage: (id: string | null) => void;
   setWorktreesPageProjectId: (projectId: string | null) => void;
   setSpacesPageProjectId: (projectId: string | null) => void;
@@ -1390,6 +1394,7 @@ interface UIStore {
   setPermissionDefaultMode: (value: PermissionMode) => void;
   setAgentMemoryFeatureAvailable: (value: boolean) => void;
   setRoutingFeatureAvailable: (value: boolean) => void;
+  setOverviewFeatureAvailable: (value: boolean) => void;
   markAgentMemoryViewed: (key: string, viewedAt: number) => void;
   setProjectContextTab: (value: string) => void;
   openProjectKnowledgePlan: (directory: string, projectContextId: string, planId: string) => void;
@@ -1497,6 +1502,7 @@ export const useUIStore = create<UIStore>()(
         archivePageOpenCount: 0,
         isUsageStatsPageOpen: false,
         isSourceBoardOpen: false,
+        isOverviewOpen: false,
         openGuestPageId: null,
         worktreesPageProjectId: null,
         spacesPageProjectId: null,
@@ -1621,6 +1627,7 @@ export const useUIStore = create<UIStore>()(
         permissionDefaultMode: 'ask',
         agentMemoryFeatureAvailable: false,
         routingFeatureAvailable: false,
+        overviewFeatureAvailable: false,
         agentMemoryViewedAt: {},
         projectContextTab: 'notes',
         projectKnowledgePlanRequest: null,
@@ -2457,54 +2464,62 @@ export const useUIStore = create<UIStore>()(
 
         setScheduledTasksDialogOpen: (open) => {
           set(open
-            ? { isScheduledTasksDialogOpen: true, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
+            ? { isScheduledTasksDialogOpen: true, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
             : { isScheduledTasksDialogOpen: false });
         },
 
         setArchivePageOpen: (open, search = '') => {
           set(open
-            ? { isArchivePageOpen: true, archivePageSearch: search, archivePageOpenCount: get().archivePageOpenCount + 1, isUsageStatsPageOpen: false, isIntegrationsCatalogOpen: false, isSourceBoardOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
+            ? { isArchivePageOpen: true, archivePageSearch: search, archivePageOpenCount: get().archivePageOpenCount + 1, isUsageStatsPageOpen: false, isIntegrationsCatalogOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
             : { isArchivePageOpen: false });
         },
 
         setIntegrationsCatalogOpen: (open) => {
           set(open
-            ? { isIntegrationsCatalogOpen: true, isArchivePageOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
+            ? { isIntegrationsCatalogOpen: true, isArchivePageOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
             : { isIntegrationsCatalogOpen: false });
         },
 
         setUsageStatsPageOpen: (open) => {
           set(open
-            ? { isUsageStatsPageOpen: true, isSourceBoardOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
+            ? { isUsageStatsPageOpen: true, isSourceBoardOpen: false, isOverviewOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
             : { isUsageStatsPageOpen: false });
         },
 
         setSourceBoardOpen: (open) => {
           set(open
-            ? { isSourceBoardOpen: true, isUsageStatsPageOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
+            ? { isSourceBoardOpen: true, isOverviewOpen: false, isUsageStatsPageOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
             : { isSourceBoardOpen: false });
+        },
+
+        setOverviewOpen: (open) => {
+          // Without the feature there is no page to open, whatever asks for it.
+          if (open && !get().overviewFeatureAvailable) return;
+          set(open
+            ? { isOverviewOpen: true, isSourceBoardOpen: false, isUsageStatsPageOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null, openGuestPageId: null }
+            : { isOverviewOpen: false });
         },
 
         setWorktreesPageProjectId: (projectId) => {
           set(projectId
-            ? { worktreesPageProjectId: projectId, spacesPageProjectId: null, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, runOverviewKey: null, openGuestPageId: null }
+            ? { worktreesPageProjectId: projectId, spacesPageProjectId: null, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, runOverviewKey: null, openGuestPageId: null }
             : { worktreesPageProjectId: null });
         },
 
         setSpacesPageProjectId: (projectId) => {
           set(projectId
-            ? { spacesPageProjectId: projectId, worktreesPageProjectId: null, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, runOverviewKey: null, openGuestPageId: null }
+            ? { spacesPageProjectId: projectId, worktreesPageProjectId: null, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, runOverviewKey: null, openGuestPageId: null }
             : { spacesPageProjectId: null });
         },
 
         setOpenGuestPage: (id) => {
-          set(id ? { openGuestPageId: id, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null }
+          set(id ? { openGuestPageId: id, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, runOverviewKey: null }
             : { openGuestPageId: null });
         },
 
         closeMainSurfaces: () => {
           const state = get();
-          if (!state.isScheduledTasksDialogOpen && !state.isArchivePageOpen && !state.isIntegrationsCatalogOpen && !state.isUsageStatsPageOpen && !state.isSourceBoardOpen && !state.worktreesPageProjectId && !state.spacesPageProjectId && !state.runOverviewKey && !state.openGuestPageId) {
+          if (!state.isScheduledTasksDialogOpen && !state.isArchivePageOpen && !state.isIntegrationsCatalogOpen && !state.isUsageStatsPageOpen && !state.isSourceBoardOpen && !state.isOverviewOpen && !state.worktreesPageProjectId && !state.spacesPageProjectId && !state.runOverviewKey && !state.openGuestPageId) {
             return;
           }
           set({
@@ -2513,6 +2528,7 @@ export const useUIStore = create<UIStore>()(
             isIntegrationsCatalogOpen: false,
             isUsageStatsPageOpen: false,
             isSourceBoardOpen: false,
+            isOverviewOpen: false,
             worktreesPageProjectId: null,
             spacesPageProjectId: null,
             runOverviewKey: null,
@@ -3124,7 +3140,7 @@ export const useUIStore = create<UIStore>()(
         // opening it closes the other surfaces and vice versa.
         setRunOverviewKey: (runKey) => {
           set(runKey
-            ? { runOverviewKey: runKey, isSessionSwitcherOpen: false, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, openGuestPageId: null }
+            ? { runOverviewKey: runKey, isSessionSwitcherOpen: false, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isIntegrationsCatalogOpen: false, isUsageStatsPageOpen: false, isSourceBoardOpen: false, isOverviewOpen: false, worktreesPageProjectId: null, spacesPageProjectId: null, openGuestPageId: null }
             : { runOverviewKey: null });
         },
 
@@ -3247,6 +3263,10 @@ export const useUIStore = create<UIStore>()(
         },
         setRoutingFeatureAvailable: (value) => {
           set({ routingFeatureAvailable: value });
+        },
+        // Losing the feature closes the page, so nothing of it stays on screen.
+        setOverviewFeatureAvailable: (value) => {
+          set(value ? { overviewFeatureAvailable: true } : { overviewFeatureAvailable: false, isOverviewOpen: false });
         },
         markAgentMemoryViewed: (key, viewedAt) => {
           set((state) => ({
