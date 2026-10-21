@@ -126,6 +126,20 @@ run a second Markdown parser. Ordinary code selections copy raw code;
 prose follows the Markdown/plain setting and retains safe rich HTML. The
 desktop `openchamber:copy` event follows the same selection policy.
 
+### Why selection cloning follows the Range boundaries
+
+`markdown/selectionRange.ts` owns code-source coverage for Markdown selection,
+rootless tool selections, and rich clipboard copies. Native `cloneContents`
+retains attributes on partial elements, so full code-source metadata is removed
+only from clones whose original content is not completely selected. Partial
+elements lie on the two Range boundary ancestor chains; following their
+first/last-child clone paths avoids scanning unrelated code blocks and pairing
+query results by index. Restored ancestor shells use the same coverage rule.
+The live React tree is read-only, and detached copies remain self-contained
+after React unmounts. Local selections still read committed token rows; whole
+code copies retain the existing full-source policy. Selection capture timing
+and highlighting retention are independent of this cloning step.
+
 ### Markdown ownership
 
 `MarkdownRendererImpl.tsx` connects Streamdown to the application component

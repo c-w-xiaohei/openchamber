@@ -327,6 +327,34 @@ test('ordinary code copy and desktop menu use raw selected source under both pro
   } finally { write.mockRestore(); state.copyMessagesAsPlainText = false; document.getSelection()?.removeAllRanges(); }
 });
 
+test('mixed rich copy clips code at both ends and preserves full middle source', async () => {
+  await render(['alpha', 'middle', 'omega'].map((code) => `\`\`\`text\n${code}\n\n\n\`\`\``).join('\n\n'));
+  const owners = host.querySelectorAll('[data-oc-code-source]');
+  const first = owners[0]?.querySelector('code span span')?.firstChild;
+  const last = owners[2]?.querySelector('code span span')?.firstChild;
+  if (!first || !last) throw new Error('Missing native code text');
+  const range = document.createRange();
+  range.setStart(first, 2);
+  range.setEnd(last, 3);
+  const selection = document.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  const copied = new Map<string, string>();
+  const event = new Event('copy', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { setData: (type: string, value: string) => copied.set(type, value) } });
+  try {
+    first.parentElement?.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(copied.get('text/plain')).toBe('```\npha\n\n```\n\n```\nmiddle\n\n```\n\n```\nome\n```');
+    const recipient = document.createElement('template');
+    recipient.innerHTML = copied.get('text/html') ?? '';
+    expect(Array.from(recipient.content.querySelectorAll('pre code'), (code) => code.textContent)).toEqual(['pha\n\n', 'middle\n\n', 'ome']);
+    expect(Array.from(owners, (owner) => owner.getAttribute('data-oc-code-source'))).toEqual(['alpha\n\n', 'middle\n\n', 'omega\n\n']);
+  } finally {
+    selection?.removeAllRanges();
+  }
+});
+
 test('desktop prose menu follows the copy setting and prevents the menu fallback', async () => {
   await render('**menu**');
   const strong = host.querySelector('strong');

@@ -1,4 +1,5 @@
 import { MESSAGE_IMAGE_EXPORT_EXCLUDE_ATTRIBUTE } from '../message/imageExport';
+import { cloneSelectionAncestor, cloneSelectionContent } from './selectionRange';
 
 // Turns a selection inside rendered chat markdown back into Markdown, so Cmd+C
 // on part of a response pastes the formatting the message copy button gives.
@@ -401,19 +402,8 @@ export const getMarkdownSelectionText = (range: Range, format: RenderedCopyForma
   const root = getMarkdownRoot(range.startContainer);
   if (!root || root !== getMarkdownRoot(range.endContainer)) return null;
 
-  const fragment = range.cloneContents();
+  const fragment = cloneSelectionContent(range);
   let content: Node = fragment;
-  {
-    const originals = Array.from(root.querySelectorAll('[data-oc-code-source]'))
-      .filter((card) => range.intersectsNode(card) && !card.contains(range.commonAncestorContainer));
-    Array.from(fragment.querySelectorAll('[data-oc-code-source]')).forEach((card, index) => {
-      const original = originals[index];
-      if (!original) return;
-      const full = root.ownerDocument.createRange();
-      full.selectNodeContents(original);
-      if (range.compareBoundaryPoints(0, full) > 0 || range.compareBoundaryPoints(2, full) < 0) card.removeAttribute('data-oc-code-source');
-    });
-  }
   let ancestor: Node | null = range.commonAncestorContainer;
   if (ancestor.nodeType === TEXT_NODE) ancestor = ancestor.parentNode;
   // A code-only range needs its row and language shells even inside a list
@@ -424,12 +414,7 @@ export const getMarkdownSelectionText = (range: Range, format: RenderedCopyForma
   const textBlock = ancestor && isElement(ancestor) ? ancestor.closest(TEXT_BLOCK_SELECTOR) : null;
   if (!codeBlock && textBlock && root.contains(textBlock) && textBlock !== root) ancestor = null;
   while (ancestor && ancestor !== root && isElement(ancestor)) {
-    const shell = ancestor.cloneNode(false);
-    if (isElement(shell) && shell.hasAttribute('data-oc-code-source')) {
-      const full = root.ownerDocument.createRange();
-      full.selectNodeContents(ancestor);
-      if (range.compareBoundaryPoints(0, full) > 0 || range.compareBoundaryPoints(2, full) < 0) shell.removeAttribute('data-oc-code-source');
-    }
+    const shell = cloneSelectionAncestor(range, ancestor);
     shell.appendChild(content);
     content = shell;
     if (ancestor === codeBlock) break;

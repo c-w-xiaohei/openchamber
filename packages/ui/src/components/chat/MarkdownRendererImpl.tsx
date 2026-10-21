@@ -19,6 +19,7 @@ import { isMobileSurfaceRuntime } from '@/lib/runtimeSurface';
 import { Icon } from '@/components/icon/Icon';
 import { useUIStore } from '@/stores/useUIStore';
 import { getMarkdownSelectionText, normalizeMarkdownCopyContent } from './markdown/selectionMarkdown';
+import { cloneSelectionContent } from './markdown/selectionRange';
 import { copyMarkdownToClipboard, copyTextToClipboard } from '@/lib/clipboard';
 import { getRuntimeKey, subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { FadeInOnReveal } from './message/FadeInOnReveal';
@@ -218,26 +219,7 @@ function selectedCopyPayload(element: HTMLElement): { text: string; html: string
   if (codeOnly) return { text, html: null };
 
   const holder = element.ownerDocument.createElement('div');
-  holder.appendChild(range.cloneContents());
-  // cloneContents retains attributes on partially selected code shells. Their
-  // complete-source metadata must not expand the rich copy beyond the range.
-  const originals = Array.from(element.querySelectorAll('[data-oc-code-source]'))
-    .filter((candidate) => range.intersectsNode(candidate) && !candidate.contains(range.commonAncestorContainer));
-  Array.from(holder.querySelectorAll('[data-oc-code-source]')).forEach((clone, index) => {
-    const original = originals[index];
-    if (!original) {
-      clone.removeAttribute('data-oc-code-source');
-      return;
-    }
-    const full = element.ownerDocument.createRange();
-    full.selectNodeContents(original);
-    if (
-      range.compareBoundaryPoints(Range.START_TO_START, full) > 0
-      || range.compareBoundaryPoints(Range.END_TO_END, full) < 0
-    ) {
-      clone.removeAttribute('data-oc-code-source');
-    }
-  });
+  holder.appendChild(cloneSelectionContent(range));
   normalizeMarkdownCopyContent(holder);
   return { text, html: holder.innerHTML };
 }

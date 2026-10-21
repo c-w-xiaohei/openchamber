@@ -1,4 +1,4 @@
-import { afterAll, afterEach, expect, test } from 'bun:test';
+import { afterAll, afterEach, expect, spyOn, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -263,6 +263,56 @@ test('source metadata cannot replace a partial second code card', () => {
   const root = render('<div data-streamdown="code-block" data-oc-code-source="first\n\n"><div data-streamdown="code-block-body" data-language="ts"><pre><code><span><span>first</span></span></code></pre></div></div><div data-streamdown="code-block" data-oc-code-source="second\n\n"><div data-streamdown="code-block-body" data-language="js"><pre><code><span><span>second</span></span></code></pre></div></div>');
   const end = textIn(root, '[data-language="js"] code > span > span');
   expect(getMarkdownSelectionText(selectionOf(root, 0, end, 3))).toBe('```ts\nfirst\n\n```\n\n```js\nsec\n```');
+});
+
+test('selecting prose does not query code elsewhere in a long message', () => {
+  const root = render('<p>Hello world</p>' + '<div data-streamdown="code-block" data-oc-code-source="unselected"><pre><code>unselected</code></pre></div>'.repeat(50));
+  const text = textIn(root, 'p');
+  const range = selectionOf(text, 0, text, 5);
+  const queries = spyOn(root, 'querySelectorAll');
+  try {
+    expect(getMarkdownSelectionText(range)).toBe('Hello');
+    expect(rangeToMarkdown(range, 'Hello')).toBe('Hello');
+    expect(queries.mock.calls.length).toBe(0);
+  } finally {
+    queries.mockRestore();
+  }
+});
+
+test('mixed code selection trims both boundary owners and preserves complete middle source', () => {
+  const root = render(['alpha', 'middle', 'omega'].map((source) =>
+    `<div data-oc-code-source="${source}\n\n"><div data-streamdown="code-block"><div data-streamdown="code-block-body" data-language="ts"><pre><code><span><span>${source}</span></span></code></pre></div></div></div>`).join(''));
+  const first = root.firstElementChild;
+  const last = root.lastElementChild;
+  if (!first || !last) throw new Error('Missing code owners');
+  const start = textIn(first, 'code span span');
+  const end = textIn(last, 'code span span');
+  const original = root.innerHTML;
+  const range = selectionOf(start, 2, end, 3);
+  expect(getMarkdownSelectionText(range)).toBe('```ts\npha\n```\n\n```ts\nmiddle\n\n```\n\n```ts\nome\n```');
+  root.removeAttribute('data-markdown-content');
+  expect(rangeToMarkdown(range, 'pha middle ome')).toBe('```ts\npha\n```\n\n```ts\nmiddle\n\n```\n\n```ts\nome\n```');
+  expect(root.innerHTML).toBe(original);
+});
+
+test('an element boundary keeps complete source and trims a partial opposite boundary', () => {
+  const root = render('<div data-streamdown="code-block" data-oc-code-source="alpha\n\n"><div data-streamdown="code-block-body" data-language="ts"><pre><code><span>alpha</span></code></pre></div></div><div data-streamdown="code-block" data-oc-code-source="beta\n\n"><div data-streamdown="code-block-body" data-language="ts"><pre><code><span>beta</span></code></pre></div></div>');
+  const first = root.firstElementChild;
+  const last = root.lastElementChild;
+  if (!first || !last) throw new Error('Missing code cards');
+  const start = textIn(first, 'code span');
+  const end = textIn(last, 'code span');
+  expect(getMarkdownSelectionText(selectionOf(first, 0, end, 2))).toBe('```ts\nalpha\n\n```\n\n```ts\nbe\n```');
+  expect(getMarkdownSelectionText(selectionOf(start, 2, last, last.childNodes.length))).toBe('```ts\npha\n```\n\n```ts\nbeta\n\n```');
+});
+
+test('partial code selection reads displayed rows when full source has advanced', () => {
+  const root = render('<div data-oc-code-source="alpha\nbeta\nnew pending line"><div data-streamdown="code-block"><div data-streamdown="code-block-body" data-language="ts"><pre><code><span><span>alpha</span></span><span><span>beta</span></span></code></pre></div></div></div>');
+  const start = textIn(root, 'code > span:first-child span');
+  const end = textIn(root, 'code > span:last-child span');
+  const selected = getMarkdownSelectionText(selectionOf(start, 2, end, 2));
+  expect(selected).toBe('```ts\npha\nbe\n```');
+  expect(serializeRenderedMarkdown(root)).toBe('```ts\nalpha\nbeta\nnew pending line\n```');
 });
 
 test('media inside anchors is serialized once and video copies its original source', () => {
