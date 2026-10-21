@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Window } from 'happy-dom';
+import { z } from 'zod';
 import { configureRuntimeUrlResolver } from '@/lib/runtime-url';
 import { switchRuntimeEndpoint } from '@/lib/runtime-switch';
 import { MarkdownMediaProvider } from './MarkdownMediaContext';
@@ -36,7 +37,7 @@ beforeEach(() => {
     const url = String(input); requests.push(url);
     if (url.includes('/auth/url-token')) return Response.json({ token: 'short-lived', expiresAt: Date.now() + 60_000 });
     if (url.includes('markdown-image-grants')) {
-      const body = JSON.parse(String(init?.body)) as { sources: string[] };
+      const body = z.object({ sources: z.array(z.string()) }).parse(JSON.parse(String(init?.body)));
       batches.push(body.sources);
       return Response.json({ results: body.sources.map((source) => ({ source, status: 'ready', path: `/repo/${source}`, expiresAt: Date.now() + 60_000 })) });
     }
@@ -107,6 +108,179 @@ describe('React-owned Markdown media', () => {
     await act(async () => root.render(<React.StrictMode><Document><MarkdownImage src="./strict.png" /></Document></React.StrictMode>));
     await flush(); await flush();
     expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:document-image');
+  });
+  test('reconnects loaded media and gallery after a real hidden interval', async () => {
+    const popups: import('../message/types').ToolPopupContent[] = [];
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('url-token')) return Response.json({ token: 'short', expiresAt: Date.now() + 60_000 });
+      const body = z.object({ sources: z.array(z.string()) }).parse(JSON.parse(String(init?.body)));
+      batches.push(body.sources);
+      return Response.json({ results: body.sources.map((source) => ({ source, status: 'ready', path: `/repo/${source}`, expiresAt: 1 })) });
+    };
+    const render = (mode: 'visible' | 'hidden') => root.render(
+      <React.Activity mode={mode}>
+        <MarkdownMediaProvider
+          content="replay"
+          mode="assistant"
+          sessionId="replay"
+          messageId="replay"
+          directory="/repo"
+          settled
+          onShowPopup={(popup) => popups.push(popup)}
+        >
+          <MarkdownImage src="replay.png" />
+        </MarkdownMediaProvider>
+      </React.Activity>,
+    );
+    await act(async () => render('visible')); await flush();
+    const image = host.querySelector('img');
+    if (!image) throw new Error('Missing image');
+    Object.defineProperties(image, { naturalWidth: { value: 100 }, naturalHeight: { value: 100 } });
+    await act(async () => image.dispatchEvent(new window.Event('load')));
+    await act(async () => render('hidden')); await flush();
+    const hiddenBatches = batches.length;
+    await act(async () => render('visible')); await flush();
+    expect(host.querySelector('img')).toBe(image);
+    await act(async () => host.querySelector('button')?.click()); await flush();
+    expect(batches.length).toBeGreaterThan(hiddenBatches);
+    expect(popups).toHaveLength(1);
+    expect(popups[0]?.image?.gallery).toHaveLength(1);
+  });
+  test('replaces revoked document URLs and rejects a pre-hide body completion after reconnect', async () => {
+    const reads: Array<{ signal: AbortSignal | null | undefined; complete: (response: Response) => void }> = [];
+    let urls = 0;
+    URL.createObjectURL = () => `blob:replay-${++urls}`;
+    globalThis.fetch = (_input, init) => new Promise<Response>((complete) => reads.push({ signal: init?.signal, complete }));
+    const render = (mode: 'visible' | 'hidden') => root.render(
+      <React.Activity mode={mode}>
+        <Document>
+          <MarkdownImage src="./replay.png" />
+          <MarkdownSource srcSet="./replay.png 1x" />
+        </Document>
+      </React.Activity>,
+    );
+    await act(async () => render('visible'));
+    expect(reads).toHaveLength(1);
+    await act(async () => render('hidden')); await flush();
+    expect(reads[0]?.signal?.aborted).toBe(true);
+    await act(async () => render('visible'));
+    expect(reads).toHaveLength(2);
+    await act(async () => reads[1]?.complete(new Response(png))); await flush();
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:replay-1');
+    expect(host.querySelector('source')?.getAttribute('srcset')).toBe('blob:replay-1 1x');
+    await act(async () => reads[0]?.complete(new Response(png))); await flush();
+    expect(urls).toBe(1);
+    await act(async () => render('hidden')); await flush();
+    expect(revoked).toEqual(['blob:replay-1']);
+    await act(async () => render('visible'));
+    expect(host.querySelector('img')?.hasAttribute('src')).toBe(false);
+    expect(host.querySelector('source')?.hasAttribute('srcset')).toBe(false);
+    await act(async () => reads[2]?.complete(new Response(png))); await flush();
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:replay-2');
+  });
+  test('reconnects unchanged memoized children after a same-key runtime renewal while hidden', async () => {
+    await act(async () => switchRuntimeEndpoint({ apiBaseUrl: 'https://runtime.test', runtimeKey: 'hidden-device' }));
+    const children = <Document><MarkdownImage src="./renew-hidden.png" /></Document>;
+    const render = (mode: 'visible' | 'hidden') => root.render(<React.Activity mode={mode}>{children}</React.Activity>);
+    await act(async () => render('visible')); await flush();
+    const before = requests.filter((url) => url.includes('/api/fs/raw')).length;
+    await act(async () => render('hidden')); await flush();
+    await act(async () => switchRuntimeEndpoint({ apiBaseUrl: 'https://runtime.test', runtimeKey: 'hidden-device', clientToken: 'renewed' }));
+    await act(async () => render('visible')); await flush();
+    expect(requests.filter((url) => url.includes('/api/fs/raw')).length).toBe(before + 1);
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:document-image');
+  });
+  test('loads an assistant image that first nears the viewport after reconnect', async () => {
+    let enter: (() => void) | undefined;
+    let observers = 0;
+    class Observer implements IntersectionObserver {
+      root = null; rootMargin = '200px'; readonly scrollMargin = '0px'; thresholds = [0];
+      constructor(callback: IntersectionObserverCallback) {
+        enter = () => callback([{ isIntersecting: true, intersectionRatio: 1, target: host, time: 0, boundingClientRect: host.getBoundingClientRect(), intersectionRect: host.getBoundingClientRect(), rootBounds: null }], this);
+      }
+      observe() { observers += 1; }
+      unobserve() {}
+      disconnect() { if (this.observing) { observers -= 1; this.observing = false; } }
+      takeRecords() { return []; }
+      private observing = true;
+    }
+    Object.defineProperty(window, 'IntersectionObserver', { configurable: true, value: Observer });
+    const render = (mode: 'visible' | 'hidden') => root.render(
+      <React.Activity mode={mode}>
+        <Chat id="late-near">
+          <MarkdownImage src="late.png" />
+        </Chat>
+      </React.Activity>,
+    );
+    await act(async () => render('visible'));
+    expect(observers).toBe(1);
+    expect(batches).toHaveLength(0);
+    await act(async () => render('hidden')); await flush();
+    expect(observers).toBe(0);
+    await act(async () => render('visible'));
+    expect(observers).toBe(1);
+    await act(async () => enter?.()); await flush();
+    expect(observers).toBe(0);
+    expect(batches).toEqual([['late.png']]);
+    expect(host.querySelector('img')?.getAttribute('src')).toContain('/api/fs/raw');
+  });
+  test('aborts runtime-owned reads synchronously and rejects their late completion', async () => {
+    const reads: Array<{ signal: AbortSignal | null | undefined; complete: (response: Response) => void }> = [];
+    let urls = 0;
+    URL.createObjectURL = () => `blob:runtime-${++urls}`;
+    globalThis.fetch = (input, init) => {
+      if (String(input).includes('url-token')) return Promise.resolve(Response.json({ token: 'short', expiresAt: Date.now() + 60_000 }));
+      return new Promise<Response>((complete) => reads.push({ signal: init?.signal, complete }));
+    };
+    await act(async () => root.render(<Document><MarkdownImage src="./runtime.png" /></Document>));
+    await act(async () => {
+      switchRuntimeEndpoint({ apiBaseUrl: 'https://replacement.test', runtimeKey: 'replacement' });
+      expect(reads[0]?.signal?.aborted).toBe(true);
+    });
+    expect(reads).toHaveLength(2);
+    await act(async () => reads[1]?.complete(new Response(png))); await flush();
+    await act(async () => reads[0]?.complete(new Response(png))); await flush();
+    expect(urls).toBe(1);
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:runtime-1');
+  });
+  test('does not open an obsolete gallery when its grant finishes after reconnect', async () => {
+    const popups: import('../message/types').ToolPopupContent[] = [];
+    let complete: (() => void) | undefined;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('url-token')) return Response.json({ token: 'short', expiresAt: Date.now() + 60_000 });
+      const body = z.object({ sources: z.array(z.string()) }).parse(JSON.parse(String(init?.body)));
+      batches.push(body.sources);
+      if (batches.length === 2) await new Promise<void>((resolve) => { complete = resolve; });
+      return Response.json({ results: body.sources.map((source) => ({ source, status: 'ready', path: `/repo/${source}`, expiresAt: 1 })) });
+    };
+    const render = (mode: 'visible' | 'hidden') => root.render(
+      <React.Activity mode={mode}>
+        <MarkdownMediaProvider
+          content="pending-gallery"
+          mode="assistant"
+          sessionId="pending-gallery"
+          messageId="pending-gallery"
+          directory="/repo"
+          settled
+          onShowPopup={(popup) => popups.push(popup)}
+        >
+          <MarkdownImage src="gallery.png" />
+        </MarkdownMediaProvider>
+      </React.Activity>,
+    );
+    await act(async () => render('visible')); await flush();
+    const image = host.querySelector('img');
+    if (!image) throw new Error('Missing image');
+    Object.defineProperties(image, { naturalWidth: { value: 100 }, naturalHeight: { value: 100 } });
+    await act(async () => image.dispatchEvent(new window.Event('load')));
+    await act(async () => host.querySelector('button')?.click());
+    expect(complete).toBeDefined();
+    await act(async () => render('hidden')); await flush();
+    await act(async () => render('visible')); await flush();
+    await act(async () => complete?.()); await flush();
+    expect(popups).toHaveLength(0);
+    await act(async () => host.querySelector('button')?.click()); await flush();
+    expect(popups).toHaveLength(1);
   });
   test('does not copy credential-bearing video sources into metadata or fallback links', async () => {
     await act(async () => root.render(<Chat><MarkdownVideo src="https://runtime.test/api/fs/raw?path=clip.mp4&oc_url_token=secret" title="clip.mp4" /></Chat>));

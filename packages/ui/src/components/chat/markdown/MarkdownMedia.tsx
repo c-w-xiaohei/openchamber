@@ -56,29 +56,49 @@ function MediaLabel({ source, name, title, linked }: { source: string; name: str
   }}>{label}</a>;
 }
 
-type LoadedSource = { owner: NonNullable<ReturnType<typeof useMarkdownMedia>>['owner']; source: string; url: string };
+type LoadedSource = {
+  owner: NonNullable<ReturnType<typeof useMarkdownMedia>>['owner'];
+  signal: AbortSignal;
+  source: string;
+  url: string;
+};
 function useMediaSource(source: string, active: boolean, video = false) {
   const context = useMarkdownMedia();
   const owner = context?.owner;
   const [loaded, setLoaded] = React.useState<LoadedSource | null>(null);
   const [failed, setFailed] = React.useState<LoadedSource | null>(null);
+  React.useLayoutEffect(() => {
+    // Activity can reveal unchanged children without rendering them first.
+    // Remove a revoked document URL before that retained DOM is painted.
+    if (context?.mode === 'document') {
+      setLoaded((current) => current?.signal.aborted ? null : current);
+    }
+  }, [context?.mode]);
   React.useEffect(() => {
     if (!owner || !source || !active) return;
+    const signal = owner.controller.signal;
     let cancelled = false;
     void owner.resolve(source, video).then((url) => {
-      if (!cancelled && !owner.controller.signal.aborted) setLoaded({ owner, source, url });
+      if (!cancelled && !signal.aborted) {
+        setFailed(null);
+        setLoaded({ owner, signal, source, url });
+      }
     }, () => {
-      if (!cancelled && !owner.controller.signal.aborted) setFailed({ owner, source, url: '' });
+      if (!cancelled && !signal.aborted) setFailed({ owner, signal, source, url: '' });
     });
     return () => { cancelled = true; };
   }, [owner, source, active, video]);
   return {
-    url: loaded && loaded.owner === owner && loaded.source === source && !(failed?.owner === owner && failed?.source === source) ? loaded.url : undefined,
-    fail: () => { if (owner) setFailed({ owner, source, url: '' }); },
+    url: loaded && loaded.owner === owner && loaded.source === source && (context?.mode !== 'document' || !loaded.signal.aborted) && !(failed?.owner === owner && failed?.source === source) ? loaded.url : undefined,
+    fail: () => { if (owner) setFailed({ owner, signal: owner.controller.signal, source, url: '' }); },
     retry: async () => {
       if (!owner) throw new Error('Missing media owner');
+      const signal = owner.controller.signal;
       const url = await owner.resolve(source, video, true);
-      if (!owner.controller.signal.aborted) { setFailed(null); setLoaded({ owner, source, url }); }
+      if (!signal.aborted) {
+        setFailed(null);
+        setLoaded({ owner, signal, source, url });
+      }
     },
   };
 }
@@ -218,9 +238,13 @@ function OwnedImage({
 function useResolvedSrcset(srcSet: string | undefined, active: boolean): string | undefined {
   const context = useMarkdownMedia();
   const owner = context?.owner;
-  const [loaded, setLoaded] = React.useState<{ owner: typeof owner; source: string; value: string } | null>(null);
+  const [loaded, setLoaded] = React.useState<{ owner: typeof owner; signal: AbortSignal; source: string; value: string } | null>(null);
+  React.useLayoutEffect(() => {
+    setLoaded((current) => current?.signal.aborted ? null : current);
+  }, []);
   React.useEffect(() => {
     if (!srcSet || !owner || !active || context?.mode !== 'document') return;
+    const signal = owner.controller.signal;
     let cancelled = false;
     const candidates = srcSet.split(',').flatMap((part) => {
       const [source, ...descriptor] = part.trim().split(/\s+/);
@@ -229,10 +253,10 @@ function useResolvedSrcset(srcSet: string | undefined, active: boolean): string 
     void Promise.all(candidates.map(async ({ source, descriptor }) => {
       const url = await owner.resolve(source);
       return descriptor ? `${url} ${descriptor}` : url;
-    })).then((values) => { if (!cancelled && !owner.controller.signal.aborted) setLoaded({ owner, source: srcSet, value: values.join(', ') }); }, () => {});
+    })).then((values) => { if (!cancelled && !signal.aborted) setLoaded({ owner, signal, source: srcSet, value: values.join(', ') }); }, () => {});
     return () => { cancelled = true; };
   }, [owner, context?.mode, srcSet, active]);
-  return loaded && loaded.owner === owner && loaded.source === srcSet ? loaded.value : undefined;
+  return loaded && loaded.owner === owner && !loaded.signal.aborted && loaded.source === srcSet ? loaded.value : undefined;
 }
 
 export function MarkdownPicture({ node: _node, children, ...props }: React.ComponentProps<'picture'> & NodeProps) {
@@ -293,19 +317,21 @@ export function MarkdownVideo(props: VideoProps) {
           if (!owned || Date.now() - playback.lastRetry < 10_000) { setRecovery({ owner, source, failed: true }); return; }
           playback.lastRetry = Date.now();
           playback.resume = { time: event.currentTarget.currentTime, playing: !event.currentTarget.paused };
+          const signal = owner?.controller.signal;
           candidate.searchParams.delete('oc_url_token');
           void refreshRuntimeUrlAuthToken().then(() => {
-            if (owner?.controller.signal.aborted || activePlayback.current !== playback || resolver !== getRuntimeUrlResolver()) return;
+            if (signal?.aborted || activePlayback.current !== playback || resolver !== getRuntimeUrlResolver()) return;
             setRecovery({ owner, source, url: resolver.authenticatedAsset('/api/fs/raw', candidate.searchParams) });
-          }, () => { if (!owner?.controller.signal.aborted && activePlayback.current === playback) setRecovery({ owner, source, failed: true }); });
+          }, () => { if (!signal?.aborted && activePlayback.current === playback) setRecovery({ owner, source, failed: true }); });
           return;
         }
         if (Date.now() - playback.lastRetry < 10_000) { fail(); return; }
         playback.lastRetry = Date.now();
         playback.resume = { time: event.currentTarget.currentTime, playing: !event.currentTarget.paused };
+        const signal = owner?.controller.signal;
         void retry().then(() => {
-          if (!owner?.controller.signal.aborted && activePlayback.current === playback) videoRef.current?.load();
-        }, () => { if (!owner?.controller.signal.aborted && activePlayback.current === playback) fail(); });
+          if (!signal?.aborted && activePlayback.current === playback) videoRef.current?.load();
+        }, () => { if (!signal?.aborted && activePlayback.current === playback) fail(); });
       }} />}
   </span>;
 }

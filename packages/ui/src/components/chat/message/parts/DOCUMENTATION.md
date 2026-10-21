@@ -431,6 +431,15 @@ preceding rendered elements, so adding a reasoning element whose child returns
 `null` would leave a divider above a direct answer. Visible reasoning and tool
 rows keep their divider.
 
+### Why media reconnects in layout setup
+
+The content owner survives effect disconnection, while requests and document
+object URLs belong to one connection. Layout setup makes that connection usable
+before child passive effects resolve sources; a deferred terminal dispose only
+covered immediate StrictMode replay and left longer hidden intervals unusable.
+Document consumers clear revoked URLs before paint and load fresh ones through
+the same owner.
+
 ### Message parts
 
 - Assistant Markdown treats raw HTML as inert visible text, including HTML
@@ -478,6 +487,15 @@ rows keep their divider.
   Workspace-external images, wherever they are on the machine, receive the
   existing path-bound `outsideFileGrant` only when the server verifies the
   exact source in the owning assistant message and the file's signature.
+  Effect cleanup aborts the connected media requests and revokes document object
+  URLs. Layout setup reconnects the same content owner before child passive
+  effects register and resolve sources. Each async operation captures its own
+  signal, so a late completion cannot use a later connection. Loaded chat image
+  presentation keeps its owner identity; document URLs are resolved again after
+  revocation. Runtime changes dispose the old owner synchronously, including
+  same-runtime credential renewal. Reconnection also checks the URL resolver
+  identity because hidden providers can miss endpoint events.
+
 - `read` and `skill` are **static navigation tools** and render via `StaticToolRow`.
 - Every other tool, including search/fetch, OpenCode built-ins, custom tools, plugins, and MCP tools, is **expandable** and renders through `ToolPart`.
 - The managed `openchamber` plugin tool uses the expandable path and hides its broad protocol input. The plugin supplies the selected action's human description as the native tool title; the UI renders that metadata without owning an action map. The full versioned result envelope renders through the same neutral JSON summary/tree/raw views as other tools, without a tool-specific output card.
