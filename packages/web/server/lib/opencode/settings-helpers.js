@@ -740,6 +740,9 @@ export const createSettingsHelpers = (dependencies) => {
     if (candidate.enterToSendConfigured === true || candidate.enterToSendConfigured === false) {
       result.enterToSendConfigured = candidate.enterToSendConfigured;
     }
+    if (candidate.mobileReturnKeySends === true || candidate.mobileReturnKeySends === false) {
+      result.mobileReturnKeySends = candidate.mobileReturnKeySends;
+    }
     if (typeof candidate.showOpenCodeUpdateNotifications === 'boolean') {
       result.showOpenCodeUpdateNotifications = candidate.showOpenCodeUpdateNotifications;
     }

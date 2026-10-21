@@ -468,6 +468,7 @@ export const SETTINGS_REGISTRY = {
   inputSpellcheckEnabled: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('inputSpellcheckEnabled', (v) => useUIStore.getState().setInputSpellcheckEnabled(v)) }),
   enterToSend: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('enterToSend', (v) => useUIStore.getState().setEnterToSend(v)) }),
   enterToSendConfigured: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('enterToSendConfigured', (v) => useUIStore.getState().setEnterToSendConfigured(v)) }),
+  mobileReturnKeySends: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('mobileReturnKeySends', (v) => useUIStore.getState().setMobileReturnKeySends(v)) }),
   persistChatDraft: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('persistChatDraft', (v) => useUIStore.getState().setPersistChatDraft(v)) }),
   largeTextPasteBehavior: field({ scope: 'profile', parse: parseLargeTextPasteBehavior, ui: uiStore('largeTextPasteBehavior', (v) => useUIStore.getState().setLargeTextPasteBehavior(v)) }),
   savePastedImagesAsFiles: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('savePastedImagesAsFiles', (v) => useUIStore.getState().setSavePastedImagesAsFiles(v)) }),

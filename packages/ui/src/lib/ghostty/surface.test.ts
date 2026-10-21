@@ -11,6 +11,7 @@ import {
   isTerminalLinkPointerGesture,
   isTerminalPasteShortcut,
   isTerminalMacAppShortcut,
+  isTerminalZoomShortcut,
   resolveTerminalMouseData,
   shouldBlinkTerminalCursor,
   terminalContentOriginY,
@@ -131,6 +132,26 @@ describe('shortcuts and gestures', () => {
     // and resolved separately).
     expect(isTerminalMacAppShortcut(mac({ metaKey: true }), 'Win32')).toBe(false);
     expect(isTerminalMacAppShortcut(mac({ metaKey: true }), 'Linux x86_64')).toBe(false);
+  });
+
+  test('Ctrl zoom chords pass through to the app on Windows and Linux', () => {
+    const chord = (code: string, key: string, mods: Partial<Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>> = {}) => ({
+      code, key, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods,
+    });
+    // macOS Cmd chords, zoom included, are isTerminalMacAppShortcut's.
+    expect(isTerminalZoomShortcut(chord('Equal', '=', { metaKey: true }), 'MacIntel')).toBe(false);
+    // Ctrl + =/-/0 on Windows/Linux reaches it too.
+    expect(isTerminalZoomShortcut(chord('Equal', '=', { ctrlKey: true }), 'Win32')).toBe(true);
+    expect(isTerminalZoomShortcut(chord('Minus', '-', { ctrlKey: true }), 'Linux x86_64')).toBe(true);
+    // Cross-platform noise stays terminal input: Ctrl chords on macOS have no
+    // accelerator, and Shift combos (Cmd+Plus) are not registered.
+    expect(isTerminalZoomShortcut(chord('Equal', '=', { ctrlKey: true }), 'MacIntel')).toBe(false);
+    expect(isTerminalZoomShortcut(chord('Equal', '=', { metaKey: true }), 'Win32')).toBe(false);
+    expect(isTerminalZoomShortcut(chord('Equal', '=', { metaKey: true, shiftKey: true }), 'MacIntel')).toBe(false);
+    // AltGraph (ctrl+alt) and unmodified keys must keep encoding for the pty.
+    expect(isTerminalZoomShortcut(chord('Equal', '=', { ctrlKey: true, altKey: true }), 'Linux x86_64')).toBe(false);
+    expect(isTerminalZoomShortcut(chord('Equal', '='), 'MacIntel')).toBe(false);
+    expect(isTerminalZoomShortcut(chord('KeyV', 'v', { ctrlKey: true }), 'Win32')).toBe(false);
   });
 
   test('a paste shortcut delivers once whichever path arrives first', () => {

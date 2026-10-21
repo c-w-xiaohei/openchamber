@@ -70,7 +70,7 @@ import { fetchGitHubRepoMetas } from '../skills-catalog/github-meta.js';
 import crypto from 'node:crypto';
 import { getGitHubAuthByAccountId } from '../github/auth.js';
 import { getGitHubCliCredential } from '../github/octokit.js';
-import { createSourceControlAuthStore } from '../gitlab/auth-storage.js';
+import { createSourceControlAuthStore } from '../source-control/auth-storage.js';
 import { refreshGitLabAccessToken, resolveGitLabClientId } from '../gitlab/device-flow.js';
 import { createGitCredentialResolver, createHttpsCredentialReference, parseGitCredentialReference } from '../git/credential-resolver.js';
 import { createGitRepositoryCredentialRuntime } from '../git/repository-credential-runtime.js';
@@ -81,7 +81,7 @@ import { createManagedSshInventory } from '../git/credentials.js';
 import { createContributorProvenanceStore } from '../git/contributor-provenance-storage.js';
 import { createGitNetworkOperationStore } from '../git/network-operation-storage.js';
 import { readEffectiveGitTransportRevision } from '../git/transport-config.js';
-import { completeWorktreeCheckoutHydration, configureRepositoryTransport } from '../git/service.js';
+import { completeWorktreeCheckoutHydration, configureRepositoryTransport, resolvePrimaryWorktreeRoot, resolveWorktreeTopLevel } from '../git/service.js';
 import { createPrivateRepositoryIdentityResolver } from '../source-control/repository-identity.js';
 import { createSourceControlAuditStore } from '../source-control/audit-storage.js';
 
@@ -698,6 +698,11 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       fsPromises,
       path,
       openchamberDataDir,
+      projectConfigRuntime,
+      readSettingsFromDisk,
+      sanitizeProjects,
+      resolvePrimaryWorktreeRoot,
+      resolveWorktreeTopLevel,
     });
     registerProjectContextRoutes(app, { projectContextRuntime });
     registerProjectDirectoryRoutes(app, {

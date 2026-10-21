@@ -266,19 +266,22 @@ export function NewWorktreeDialog({
     setSourceBranch(resolveBranchOnTopSource(branches.all, initialSourceBranch) || `remotes/${onTopRemote}/${initialSourceBranch}`);
   }, [open, initialSourceBranch, branches?.all, sourceBranch, onTopRemote]);
 
-  // Start from the branch the project root is on, once branches are known.
+  // Start from the bound remote's default branch as it is on the remote, else
+  // the branch the project root is on, once branches are known.
   React.useEffect(() => {
     if (!open || initialSourceBranch || !branches?.all || !projectDirectory || sourceBranch) return;
     let cancelled = false;
     void getRootBranch(projectDirectory).catch(() => null).then((rootBranch) => {
       if (cancelled) return;
-      const preferred = resolveDefaultSourceBranch({ branches: branches.all, rootBranch });
+      const defaultBranches = branches.defaultBranches ?? {};
+      const defaultBranch = defaultBranches[onTopRemote] ?? null;
+      const preferred = resolveDefaultSourceBranch({ branches: branches.all, rootBranch, defaultBranch, remote: onTopRemote });
       if (preferred) setSourceBranch((current) => current || preferred);
     });
     return () => {
       cancelled = true;
     };
-  }, [open, initialSourceBranch, branches?.all, projectDirectory, sourceBranch]);
+  }, [open, initialSourceBranch, branches?.all, branches?.defaultBranches, projectDirectory, sourceBranch, onTopRemote]);
 
   // Reset state on each open. Resetting on close would empty the form during
   // the close animation, causing visible flicker.

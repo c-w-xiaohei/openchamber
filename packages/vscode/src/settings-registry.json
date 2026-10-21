@@ -490,6 +490,9 @@
     "enterToSendConfigured": {
       "scope": "profile"
     },
+    "mobileReturnKeySends": {
+      "scope": "profile"
+    },
     "persistChatDraft": {
       "scope": "profile"
     },

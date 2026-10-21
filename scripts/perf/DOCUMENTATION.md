@@ -610,6 +610,18 @@ synchronously on the Electron main thread during OpenCode bootstrap, although
 Desktop already merged the same probe into `process.env`, so the user's shell
 startup is paid twice.
 
+## JSON tree layout regression
+
+`json-tree-view.browser.test.mjs` loads the real JSON view and UI stylesheet in an isolated Vite fixture. It checks a Files-height container around the 200-row virtualization boundary and at 26,000 entries, tail reachability, collapse/expand, resize, hide/show, toolbar focus, and chat's absolute height caps. Both the fixture server and Chrome's debugging port stay on loopback. It reads no application state and stops the processes it started.
+
+```bash
+node --test scripts/perf/json-tree-view.browser.test.mjs
+# When Chrome is outside the standard locations:
+OPENCHAMBER_TEST_CHROME=/path/to/chrome node --test scripts/perf/json-tree-view.browser.test.mjs
+```
+
+The test reports a skip if Chrome is unavailable. An explicit invalid Chrome path fails. This is layout correctness coverage; measure Files performance in the built app.
+
 ## profile:heap
 
 Reads the JS heap, DOM nodes and listeners three times, each after two forced

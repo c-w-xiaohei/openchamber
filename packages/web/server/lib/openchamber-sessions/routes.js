@@ -57,6 +57,13 @@ const FALLBACK_MODEL_ID = 'big-pickle';
 const MIN_GOAL_TOKEN_BUDGET = 1_000;
 const MAX_GOAL_TOKEN_BUDGET = 100_000_000;
 
+// OpenCode answers LocationNotFoundError only when a directory does not exist;
+// for a session route that is the session's own folder. Mirrored by
+// `SESSION_DIRECTORY_MISSING_CODE` in packages/ui/src/sync/session-archive-batch.ts
+// and packages/vscode/src/bridge-system-runtime.ts.
+const SESSION_DIRECTORY_MISSING_CODE = 'SESSION_DIRECTORY_MISSING';
+const isLocationNotFound = (error) => error?._tag === 'LocationNotFoundError';
+
 const resolveGoalInput = (payload, prompt) => {
   const enabled = payload?.goal === true;
   if (payload?.goalTokenBudget !== undefined && !enabled) {
@@ -901,7 +908,18 @@ export const createOpenChamberSessionService = (dependencies) => {
       throw new OpenChamberControlError('patch must be an object', 400);
     }
 
-    return { metadata: await writeMetadata(id, patch, asNonEmptyString(payload?.directory) || '') };
+    try {
+      return { metadata: await writeMetadata(id, patch, asNonEmptyString(payload?.directory) || '') };
+    } catch (error) {
+      // OpenCode (2.0.32, 2.1.0) refuses every write to a session whose folder
+      // is gone once that folder is no longer loaded, though the session still
+      // reads. The code lets the UI say so and offer archive, which
+      // OpenChamber keeps and which still works.
+      if (!isLocationNotFound(error)) throw error;
+      throw new OpenChamberControlError(error.message || 'The session folder no longer exists', 409, {
+        code: SESSION_DIRECTORY_MISSING_CODE,
+      });
+    }
   };
 
   const getMetadata = async (sessionID, directory = '') => {
@@ -1339,7 +1357,7 @@ export const createOpenChamberSessionService = (dependencies) => {
 
 const sendServiceError = (res, error, fallback) => {
   const controlError = asControlError(error, fallback);
-  return res.status(controlError.statusCode).json({
+  const body = {
     error: controlError.message,
     ...(controlError.partial === true ? {
       partial: true,
@@ -1347,7 +1365,9 @@ const sendServiceError = (res, error, fallback) => {
       sessionId: controlError.sessionId,
       directory: controlError.directory,
     } : {}),
-  });
+  };
+  if (controlError.code === SESSION_DIRECTORY_MISSING_CODE) body.code = controlError.code;
+  return res.status(controlError.statusCode).json(body);
 };
 
 export const registerOpenChamberSessionRoutes = (app, dependencies) => {

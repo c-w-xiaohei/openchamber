@@ -134,8 +134,20 @@ const metadataResponseSchema = z.object({
   metadata: z.record(z.string(), jsonValueSchema),
 });
 
+/**
+ * The session's folder no longer exists, so OpenCode refuses the write.
+ * Mirrors `SESSION_DIRECTORY_MISSING_CODE` in
+ * packages/web/server/lib/openchamber-sessions/routes.js and the VS Code bridge.
+ */
+const SESSION_DIRECTORY_MISSING_CODE = 'SESSION_DIRECTORY_MISSING';
+
+const directoryMissingResponseSchema = z.object({
+  code: z.literal(SESSION_DIRECTORY_MISSING_CODE),
+});
+
 export type SessionMetadataUpdateResult =
   | { outcome: 'updated'; metadata: Metadata }
+  | { outcome: 'directory-missing'; reason: string }
   | { outcome: 'unavailable'; reason: string };
 
 /**
@@ -163,7 +175,11 @@ export async function requestSessionMetadataUpdate(
   }
 
   if (!response.ok) {
-    return { outcome: 'unavailable', reason: `metadata request failed with ${response.status}` };
+    const reason = `metadata request failed with ${response.status}`;
+    const errorBody: unknown = await response.json().catch(() => null);
+    return directoryMissingResponseSchema.safeParse(errorBody).success
+      ? { outcome: 'directory-missing', reason }
+      : { outcome: 'unavailable', reason };
   }
 
   let body: unknown;

@@ -546,6 +546,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isMobile,
   },
   {
+    id: 'chat.mobile-return-key-sends',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.field.mobileReturnKeySends',
+    descriptionKey: 'settings.openchamber.visual.field.mobileReturnKeySendsHint',
+    keywords: ['enter', 'return', 'send', 'newline', 'keyboard', 'enterkeyhint', 'voice', 'dictation', 'swipe up'],
+    isAvailable: (ctx) => ctx.isMobile,
+  },
+  {
     id: 'sessions.default-model',
     page: 'sessions',
     titleKey: 'settings.openchamber.defaults.field.defaultModel',
@@ -879,6 +887,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'integrations',
     titleKey: 'settings.gitlab.actions.connect',
     keywords: ['gitlab', 'connect', 'add account', 'oauth', 'pat', 'token', 'instance'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'git.github-enterprise-connect',
+    page: 'integrations',
+    titleKey: 'settings.github.enterprise.instance.customLabel',
+    descriptionKey: 'settings.github.enterprise.instance.customInfo',
+    keywords: ['github', 'enterprise', 'ghe', 'instance', 'connect', 'add account', 'pat', 'token', 'gh cli'],
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
@@ -1351,6 +1367,13 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'skills.catalog',
     titleKey: 'settings.skills.catalog.page.actions.addCatalog',
     keywords: ['external repository', 'add source', 'catalog'],
+  },
+  {
+    id: 'magic-prompts.scope',
+    page: 'magic-prompts',
+    titleKey: 'settings.magicPrompts.page.scope.label',
+    keywords: ['global', 'project', 'project overrides', 'project.json', 'inherit'],
+    isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
     id: 'magic-prompts.visible-prompt',

@@ -423,6 +423,14 @@ themselves cannot list. Past four pills the rest wait behind one `+N` pill
 that reveals them in the row; the same pill then hides them again. The list is projected once the last assistant message
 finished with `stop`, so no tool patch is parsed while the turn streams.
 
+### Why empty reasoning does not separate the answer
+
+`MessageBody` omits reasoning containing only whitespace or default-ignorable
+characters before adding its React element. The final-answer divider counts
+preceding rendered elements, so adding a reasoning element whose child returns
+`null` would leave a divider above a direct answer. Visible reasoning and tool
+rows keep their divider.
+
 ### Message parts
 
 - Assistant Markdown treats raw HTML as inert visible text, including HTML
@@ -438,8 +446,9 @@ finished with `stop`, so no tool patch is parsed while the turn streams.
   and the code plugin's token metadata. Automatic confirmation runs through
   the bounded, cached stat queue after settlement and never on mobile.
   Code-path annotations are declarative; unconfirmed tokens stay code.
-  Automatic probes skip emails and digit-leading suffixes (`user@gmail.com`,
-  `v1.2.3`, `backup.7z`); clicks on a link keep the broad rules, so a
+  Automatic probes skip emails, handles and digit-leading suffixes
+  (`user@gmail.com`, `v1.2.3`, `backup.7z`); an `@` after a slash is a path
+  (`node_modules/@types/...`) and still links. Clicks on a link keep the broad rules, so a
   file-looking href opens the viewer and never a new window (#3858).
   Directory/runtime changes must reject older results. Explicit file links
   retain their navigation behavior independently of automatic probing.

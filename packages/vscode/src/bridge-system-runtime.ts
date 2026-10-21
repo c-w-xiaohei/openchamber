@@ -31,6 +31,12 @@ const readStoredProviderBaseURL = (providerID: string): string | undefined => {
 
 const isSessionNotFound = (error: Error): boolean => error.name === 'SessionNotFoundError';
 
+// OpenCode answers LocationNotFoundError only when the session's folder does
+// not exist. Mirrors `SESSION_DIRECTORY_MISSING_CODE` in
+// packages/web/server/lib/openchamber-sessions/routes.js; webview/main.tsx
+// passes it on to packages/ui/src/sync/session-archive-batch.ts.
+const SESSION_DIRECTORY_MISSING_CODE = 'SESSION_DIRECTORY_MISSING';
+
 const openCodeClientFor = (manager: OpenCodeManager | undefined, directory?: string) => {
   const apiUrl = manager?.getApiUrl();
   if (!manager || !apiUrl) throw new Error('OpenCode is not available');
@@ -460,7 +466,11 @@ export async function handleSystemBridgeMessage(
       try {
         return { id, type, success: true, data: { metadata: await deps.sessionState.setMetadata(sessionId, patch, sessionMetadataOnOpenCode(ctx?.manager)) } };
       } catch (error) {
-        return { id, type, success: false, error: error instanceof Error ? error.message : String(error) };
+        const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof Error && error.name === 'LocationNotFoundError') {
+          return { id, type, success: false, error: message, code: SESSION_DIRECTORY_MISSING_CODE };
+        }
+        return { id, type, success: false, error: message };
       }
     }
 

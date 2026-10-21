@@ -6,12 +6,14 @@ const probes = (values: string[]) => values.filter((value) => resolveMarkdownFil
 describe('resolveMarkdownFile', () => {
   test('probes skip emails and digit-leading suffixes while keeping file references (#5330)', () => {
     const rejected = [
-      'user@gmail.com', '@someone.ts', '@scope/package.json', 'src/user@host.ts',
+      'user@gmail.com', '@someone.ts',
       'gpt-5.4', '93.00', '3.49s', 'v1.2.3', '3.1.4', 'ls.1',
       'backup.7z', 'clip.3gp', 'data.001',
       'https://example.com/file.ts', '--flag.ts', '.', '..', 'a  b.ts',
     ];
     const accepted = [
+      // A slash makes an `@` part of a path: scoped packages and pnpm stores.
+      '@scope/package.json', 'node_modules/@types/node/index.d.ts',
       '.env', '.config.json', './src/entry.ts', '../src/parent.ts', '/repo/absolute.ts',
       'path with spaces/file name.ts', 'file.test.ts', 'my-file.tar.gz', 'a-b.c',
       'shader.frag2', 'component.d-ts', 'README', 'Dockerfile',

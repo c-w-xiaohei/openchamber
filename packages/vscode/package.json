@@ -175,6 +175,20 @@
         "label": "OpenChamber"
       }
     ],
+    "keybindings": [
+      {
+        "command": "openchamber.showSettings",
+        "key": "ctrl+,",
+        "mac": "cmd+,",
+        "when": "openchamber.settingsShortcutTarget == chat && !inQuickOpen"
+      },
+      {
+        "command": "openchamber.closeSettings",
+        "key": "ctrl+,",
+        "mac": "cmd+,",
+        "when": "openchamber.settingsShortcutTarget == settings && !inQuickOpen"
+      }
+    ],
     "menus": {
       "scm/title": [
         {

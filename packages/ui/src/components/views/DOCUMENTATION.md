@@ -193,6 +193,8 @@ under the OpenChamber data directory and repository plans in a custom folder.
 accepts comments and trailing commas for preview without changing the source
 text. `JsonTreeView` defaults to strict JSON parsing for other callers.
 
+`FilesView` gives `JsonTreeView` the pane's full height. Its toolbar does not shrink, and its flex body has `min-height: 0`, so `JsonTreeViewer` gets the remaining height as its scroll viewport. Above 200 rows, the virtualizer mounts only the visible range and overscan. Chat callers keep their absolute `400px` and `70vh` height caps.
+
 `JsonTreeViewer` (Files, chat tool output) draws its rows with the file
 tree's parts, `fileTreeRowPaddingLeft` and `FileTreeIndentGuides`, plus a
 copy of `FileTreeChevron`'s look, so nesting reads the same in both trees.
@@ -208,6 +210,10 @@ so it renders `dir="ltr"` in every language; mirrored, it flipped brackets
 and showed `"</head>"` as `"<head/>"`. That is why the chevron is a copy:
 `FileTreeChevron`'s `rtl:-rotate-90` follows `<html dir>` and would point the
 unmirrored arrow up inside the LTR block.
+
+### Why a bounded flex body and not percentage max-height alone
+
+A percentage max-height inside auto-height wrappers let the inner viewport grow to the entire virtual list. The Files pane then scrolled outside the virtualizer, which mounted every row and froze the renderer on large JSON. The flex layout keeps the virtualizer's viewport bounded without changing file limits, preview preferences or saved tabs.
 
 ## Pull request comparisons
 

@@ -851,7 +851,7 @@ describe('settings registry gate', () => {
     timeFormatPreference: '24h', weekStartPreference: 'monday', messageStreamTransport: 'ws', diffLayoutPreference: 'inline', diffWrapLines: true, diffHideWhitespace: true,
     gitChangesViewMode: 'tree', gitmojiEnabled: true, defaultFileViewerPreview: true, directoryShowHidden: true, filesViewShowGitignored: true,
     fileEditorKeymap: 'vim', fileEditorVimMappings: 'inoremap jk <Esc>', autoSaveEnabled: true, confirmFileTreeMove: false, layoutAnimations: false, openLinksInBrowserPanel: true, liveBrowserTabLimit: 8, openTrackerLinksOnBoard: true, fileTreeSide: 'left', autoCreateWorktree: true, sessionTabsEnabled: true,
-    allowPromptingSubagentSessions: true, inputSpellcheckEnabled: true, enterToSend: true, enterToSendConfigured: true, persistChatDraft: true,
+    allowPromptingSubagentSessions: true, inputSpellcheckEnabled: true, enterToSend: true, enterToSendConfigured: true, mobileReturnKeySends: true, persistChatDraft: true,
     largeTextPasteBehavior: 'attach', savePastedImagesAsFiles: true, followUpBehavior: 'steer', queueModeEnabled: true, inputHistoryScope: 'global', inputHistoryLimit: 40,
     draftStarters: [{ type: 'command', name: 'plan-feature' }], draftStartersVisible: true, draftStartersCraftGoalAdded: true, draftStartersScheduleTaskAdded: true,
     fontSize: 100, terminalFontSize: 14, editorFontSize: 14, uiFont: 'inter', monoFont: 'jetbrains-mono', customUiFont: 'Maple Mono NF CN', customMonoFont: 'Maple Mono', padding: 100, cornerRadius: 8,

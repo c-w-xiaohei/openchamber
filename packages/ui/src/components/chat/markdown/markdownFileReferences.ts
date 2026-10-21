@@ -45,12 +45,14 @@ const KNOWN_FILE_BASENAMES = new Set(['dockerfile', 'makefile', 'readme', 'licen
 
 // Clicks keep the broad rules so a file-looking link never falls through to
 // its target="_blank" default (#3858). Probes are automatic and skip emails
-// and digit-leading suffixes such as `user@gmail.com`, `v1.2.3` or `93.00`.
+// handles and digit-leading suffixes such as `user@gmail.com`, `v1.2.3` or `93.00`.
 type FileReferencePurpose = 'probe' | 'click';
 
 const isLikelyFilePath = (path: string, purpose: FileReferencePurpose): boolean => {
   if (!path || path.startsWith('--') || path.includes('://') || /[<>]/.test(path) || /\s{2,}/.test(path)) return false;
-  if (purpose === 'probe' && path.includes('@')) return false;
+  // An `@` without a slash is an email or a handle; with one it is usually a
+  // scoped package or pnpm path (`node_modules/@types/node/index.d.ts`).
+  if (purpose === 'probe' && path.includes('@') && !path.includes('/')) return false;
   const normalized = normalizeReferencePath(path);
   const name = normalized.split('/').filter(Boolean).pop() ?? '';
   if (!name || name === '.' || name === '..') return false;

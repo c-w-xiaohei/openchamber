@@ -107,7 +107,8 @@ import {
   type MobileSessionWorkAction,
 } from './MobileSessionSwipe';
 import { isDoneSuggested, isSessionInWork } from '@/lib/sessionWorkMetadata';
-import { setSessionWorkState } from '@/sync/session-actions';
+import { SessionDirectoryMissingError, setSessionWorkState } from '@/sync/session-actions';
+import { toastSessionWorkFailure } from '@/components/session/sidebar/sessions/sessionWorkFailure';
 import { useUIStore } from '@/stores/useUIStore';
 import { FileTreeChevron } from '@/components/views/files/FileTreeRowParts';
 import { SessionTreeGuides } from '@/components/session/sidebar/sessions/SessionTreeGuides';
@@ -1616,8 +1617,8 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
   const handleToggleWork = async (session: Session, inWork: boolean) => {
     try {
       await setSessionWorkState(session.id, getSessionDirectory(session) || null, inWork ? 'done' : 'open');
-    } catch {
-      toast.error(t('sessions.sidebar.session.work.updateFailed'));
+    } catch (error) {
+      toastSessionWorkFailure(error instanceof SessionDirectoryMissingError, () => { void handleArchive(session); }, t);
     }
   };
 

@@ -5223,6 +5223,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             >
               <div className="h-full overflow-auto">
                 <JsonTreeView
+                  className="h-full"
                   jsonString={fileContent}
                   // Config files under a .json name (tsconfig, opencode.json) carry
                   // comments and trailing commas; the editor's check accepts them too.

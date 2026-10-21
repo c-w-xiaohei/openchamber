@@ -460,6 +460,34 @@ describe('openchamber session routes', () => {
         .resolves.toMatchObject({ body: { metadata: {} } });
     });
 
+    it('answers SESSION_DIRECTORY_MISSING when OpenCode refuses the write because the folder is gone', async () => {
+      const locationNotFound = Object.assign(new Error('Location not found: /repo/wt-gone'), {
+        _tag: 'LocationNotFoundError',
+        location: { directory: '/repo/wt-gone' },
+      });
+      const persistSessionMetadata = vi.fn(async () => { throw locationNotFound; });
+      const { app } = createApp({ persistSessionMetadata });
+
+      const response = await request(app)
+        .post('/api/openchamber/sessions/ses_a/metadata')
+        .send({ patch: { openchamber: { work: { state: 'done' } } } })
+        .expect(409);
+
+      expect(response.body).toEqual({ error: 'Location not found: /repo/wt-gone', code: 'SESSION_DIRECTORY_MISSING' });
+    });
+
+    it('keeps any other failed write a plain error without the folder code', async () => {
+      const persistSessionMetadata = vi.fn(async () => { throw new Error('OpenCode is down'); });
+      const { app } = createApp({ persistSessionMetadata });
+
+      const response = await request(app)
+        .post('/api/openchamber/sessions/ses_a/metadata')
+        .send({ patch: { openchamber: { work: { state: 'done' } } } })
+        .expect(500);
+
+      expect(response.body).toEqual({ error: 'OpenCode is down' });
+    });
+
     it('rejects a missing or non-object patch', async () => {
       const { app, broadcastGlobalUiEvent } = createApp();
 

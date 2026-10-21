@@ -585,7 +585,11 @@ and the send path reading the same grammar.
   (`/undo`, `/redo`, `/compact`, `/timeline`, `/handoff-review`, `/fork`) take
   only their command text and leave comments, files, and linked context attached;
    magic prompt commands send that
-  context with the prompt they produce. Session actions are planned only when
+  context with the prompt they produce. Their text comes from one read of
+  the Magic Prompts that apply in the directory the send lands in, chosen
+  when the send starts: the `/btw` fork, the session, else the new-session
+  draft; a new chat has no folder yet and reads the global prompts. A failed
+  read sends nothing and restores the input. Session actions are planned only when
   a session exists, so typing one into a new-session draft stays on the normal
   send path. A local command is never queued as text: queueing runs it
   instead. `/fork [text]` (`submit/forkCommand.ts`) forks after the last
@@ -1058,9 +1062,15 @@ suites that install module mocks are order-dependent.
 
 `keyboardPolicy.ts` owns the submission decision. On mobile, Enter and
 Shift+Enter insert a newline regardless of synced settings or CodeMirror's
-deferred Shift modifier. Ctrl/Cmd+Enter remains available for external keyboards;
+deferred Shift modifier, unless the mobile "Return key sends" setting is on. Ctrl/Cmd+Enter remains available for external keyboards;
 Send and Queue buttons retain their normal behavior. The Enter-to-send setting
 and its search entry are hidden on mobile without changing the desktop preference.
+
+The mobile "Return key sends" setting relabels the keycap with
+`enterkeyhint="send"` and makes it submit. Its deferred Enter restores the real
+Shift only while a hardware keyboard is attached: iOS autocapitalization reports
+a phantom Shift at sentence starts, so a soft-keyboard Send always submits, while
+a hardware Shift+Enter still inserts a newline. Ctrl/Cmd+Enter is unchanged.
 
 The expanded desktop composer always inserts a newline with Enter, including
 Shift+Enter, and sends with Ctrl/Cmd+Enter; it ignores the Enter-to-send preference.

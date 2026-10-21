@@ -1140,6 +1140,7 @@ interface UIStore {
   largeTextPasteBehavior: LargeTextPasteBehavior;
   enterToSend: boolean;
   enterToSendConfigured: boolean;
+  mobileReturnKeySends: boolean;
   wideChatLayoutEnabled: boolean;
   codeBlockLineWrap: boolean;
   tableCellWrap: boolean;
@@ -1402,6 +1403,7 @@ interface UIStore {
   setInputSpellcheckEnabled: (value: boolean) => void;
   setLargeTextPasteBehavior: (value: LargeTextPasteBehavior) => void;
   setEnterToSend: (value: boolean) => void;
+  setMobileReturnKeySends: (value: boolean) => void;
   setEnterToSendConfigured: (value: boolean) => void;
   setWideChatLayoutEnabled: (value: boolean) => void;
   setCodeBlockLineWrap: (value: boolean) => void;
@@ -1635,6 +1637,7 @@ export const useUIStore = create<UIStore>()(
         largeTextPasteBehavior: DEFAULT_LARGE_TEXT_PASTE_BEHAVIOR,
         enterToSend: false,
         enterToSendConfigured: false,
+        mobileReturnKeySends: false,
         wideChatLayoutEnabled: false,
         codeBlockLineWrap: true,
         tableCellWrap: true,
@@ -3299,6 +3302,9 @@ export const useUIStore = create<UIStore>()(
         setEnterToSendConfigured: (value) => {
           set({ enterToSendConfigured: value });
         },
+        setMobileReturnKeySends: (value) => {
+          set({ mobileReturnKeySends: value });
+        },
         setWideChatLayoutEnabled: (value) => {
           set({ wideChatLayoutEnabled: value });
         },
@@ -3786,6 +3792,7 @@ export const useUIStore = create<UIStore>()(
           largeTextPasteBehavior: state.largeTextPasteBehavior,
           enterToSend: state.enterToSend,
           enterToSendConfigured: state.enterToSendConfigured,
+          mobileReturnKeySends: state.mobileReturnKeySends,
           wideChatLayoutEnabled: state.wideChatLayoutEnabled,
           codeBlockLineWrap: state.codeBlockLineWrap,
           tableCellWrap: state.tableCellWrap,
