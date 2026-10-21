@@ -15,8 +15,11 @@ declare module 'micromark-util-types' {
 
 // A text construct keeps code and link destinations under CommonMark's parser.
 // Bracket math must occupy its own line so escaped bracket prose stays prose.
+// "Own line" is relative to its container: a list item or a quote starts its
+// text after the marker, so the line start is the start of the text flow or a
+// line ending, never an absolute column.
 const tokenizeBackslashMath: Tokenizer = function (effects, ok, nok) {
-  const column = this.now().column;
+  const lineStart = this.previous === null || this.previous < -2;
   let bracket = false;
   let hasContent = false;
   function start(code: number | null) {
@@ -28,7 +31,7 @@ const tokenizeBackslashMath: Tokenizer = function (effects, ok, nok) {
   function opening(code: number | null) {
     if (code !== 40 && code !== 91) return nok(code);
     bracket = code === 91;
-    if (bracket && column !== 1) return nok(code);
+    if (bracket && !lineStart) return nok(code);
     effects.consume(code);
     effects.exit('ocMathMarker');
     effects.enter('ocMathValue');

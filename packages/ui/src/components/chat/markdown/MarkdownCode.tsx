@@ -162,7 +162,7 @@ export function MarkdownCode({ children, className, node, ...props }: React.Comp
       onKeyDown={handleFileClick}
     >
       <CodeBlockContainer language={language} isIncomplete={incomplete} dir="ltr">
-        <CodeBlockHeader language={language} />
+        <CodeBlockHeader language={language.toLowerCase() || 'text'} />
         {!purpose && (
           <div className="pointer-events-none absolute top-0 end-0 flex items-center">
             <div

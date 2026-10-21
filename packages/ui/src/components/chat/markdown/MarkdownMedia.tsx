@@ -83,6 +83,16 @@ function useMediaSource(source: string, active: boolean, video = false) {
   };
 }
 
+// Tailwind preflight gives images `height: auto`, which beats the height
+// attribute. A numeric pair (a GitHub screenshot, 1920 x 906) becomes a ratio
+// so the image scales with the column; a height alone stays that height.
+const documentImageSize = (width: ImageProps['width'], height: ImageProps['height']): React.CSSProperties => {
+  const h = height === undefined ? '' : String(height).trim();
+  const w = width === undefined ? '' : String(width).trim();
+  if (!/^\d+$/.test(h)) return {};
+  return /^\d+$/.test(w) && Number(h) > 0 ? { aspectRatio: `${w}/${h}` } : { height: `${h}px` };
+};
+
 export function MarkdownImage(props: ImageProps) {
   const source = originalSource(props, props.src);
   const context = useMarkdownMedia();
@@ -118,6 +128,9 @@ function OwnedImage({
   const assistant = context?.mode === 'assistant';
   const { ref, near } = useNearMedia(assistant);
   const owner = context?.owner;
+  // Only assistant parts open the message gallery; tool output, reasoning and
+  // user text draw a plain picture, as before.
+  const gallery = assistant && Boolean(context?.onShowPopup) && !linked;
   React.useEffect(() => owner?.register(source), [owner, source]);
   const active = Boolean(context && (!assistant || context.settled && near));
   const { url, fail } = useMediaSource(source, active);
@@ -131,9 +144,9 @@ function OwnedImage({
   }, [rowReport, id, drawn, size]);
   React.useEffect(() => {
     const element = ref.current;
-    if (!owner || !drawn || !element || linked || context?.mode === 'document') return;
+    if (!owner || !drawn || !element || !gallery) return;
     return owner.addGallery({ source, filename: name, element, resolve: () => owner.resolve(source, false, true) });
-  }, [owner, drawn, source, name, ref, linked, context?.mode]);
+  }, [owner, drawn, source, name, ref, gallery]);
 
   const documentMode = context?.mode === 'document';
   const image = url || documentMode ? (
@@ -146,7 +159,7 @@ function OwnedImage({
       width={width}
       height={height}
       className={cn(documentMode ? className : 'block h-auto max-h-[30rem] w-auto max-w-full object-contain', !documentMode && !drawn && 'hidden')}
-      style={{ ...style, height: height || style?.height, width: row?.ready ? '100%' : style?.width }}
+      style={documentMode ? { ...style, ...documentImageSize(width, height) } : { ...style, width: row?.ready ? '100%' : style?.width }}
       data-oc-media-source={copySource(source)}
       data-oc-media-srcset={srcSet}
       decoding="async"
@@ -181,7 +194,8 @@ function OwnedImage({
       data-oc-media-source={copySource(source)}
     >
       {!drawn && <MediaLabel source={source} name={name} title={title} linked={linked} />}
-      {url && (
+      {url && !gallery && image}
+      {url && gallery && (
         <Button
           variant="ghost"
           className={cn('block h-auto max-w-full overflow-hidden rounded-lg bg-muted/10 p-0 cursor-zoom-in', !drawn && 'hidden')}
@@ -312,9 +326,12 @@ export function MarkdownParagraph({ node, children, ...props }: React.ComponentP
   const bareText = bare?.type === 'element' && bare.children.length === 1 && bare.children[0]?.type === 'text' ? bare.children[0].value : '';
   const count = nodes?.length ?? 0;
   const onlyImages = count > 1 && nodes?.every((child) => child.type === 'element' && child.tagName === 'img');
-  const ready = Boolean(onlyImages && sizes.size === count);
+  // Equal-height image rows and bare clip URLs as players belong to assistant
+  // text and documents respectively, as they did before the port.
+  const mode = useMarkdownMedia()?.mode;
+  const ready = Boolean(mode === 'assistant' && onlyImages && sizes.size === count);
   const value = React.useMemo(() => ({ report, ready }), [report, ready]);
-  if (bareText && bareText === href && isBareVideoUrl(bareText)) {
+  if (mode === 'document' && bareText && bareText === href && isBareVideoUrl(bareText)) {
     return <p {...props} data-streamdown="paragraph"><MarkdownVideo src={bareText} /></p>;
   }
   const known = [...sizes.values()];

@@ -100,10 +100,14 @@ describe('Streamdown processing policy', () => {
   });
 
   test('preserves real fence language and metastring while stripping authored classes', () => {
-    const result = render('```rust title="file.rs"\nlet x = 1;\n```\n\n<code class="language-rust">raw</code>', true);
+    const result = render('```rust title="file.rs"\nlet x = 1;\n```\n\n<code class="language-rust">raw</code> <code class="language-ts fixed">mixed</code> <span class="language-ts">span</span>', true);
     expect(result.querySelector('pre code')?.getAttribute('class')).toBe('language-rust');
     expect(result.querySelector('pre code')?.getAttribute('metastring')).toBe('title="file.rs"');
-    expect(result.querySelector('p code')?.hasAttribute('class')).toBe(false);
+    // A document's own language class stays, as it did before; any other author class goes.
+    const inline = result.querySelectorAll('p code');
+    expect(inline[0]?.getAttribute('class')).toBe('language-rust');
+    expect(inline[1]?.hasAttribute('class')).toBe(false);
+    expect(result.querySelector('p span')?.hasAttribute('class')).toBe(false);
   });
 
   test('rejects obfuscated and network media sources without trusting authored metadata', () => {
@@ -153,6 +157,13 @@ describe('Streamdown math and CJK compatibility', () => {
     expect(result.textContent).toContain('$100$');
     expect(result.textContent).toContain('$5 and $10');
     expect(result.textContent).toContain('$50M to $72M');
+  });
+
+  test('bracket display math may own a line inside a list item or a quote', () => {
+    for (const source of ['- item\n\n  \\[x^2\\]', '- item\n  \\[x^2\\]', '> q\n> \\[x\\]', '1. a\n   \\[\n   y\n   \\]']) {
+      expect(render(source).querySelectorAll('.katex').length).toBeGreaterThan(0);
+    }
+    expect(render('text \\[x\\]').querySelector('.katex')).toBeNull();
   });
 
   test('keeps LaTeX emphasis characters inside dollar math (#5303)', () => {

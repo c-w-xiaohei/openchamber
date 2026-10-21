@@ -247,6 +247,7 @@ export interface MarkdownContentProps {
   messageId?: string;
   enableFileReferences?: boolean;
   disableLinkSafety?: boolean;
+  loopbackPreview?: boolean;
   documentAssets?: MarkdownDocumentAssets;
   onShowPopup?: (content: ToolPopupContent) => void;
   mermaidControls?: MermaidControls;
@@ -271,6 +272,7 @@ export function MarkdownContent({
   messageId,
   enableFileReferences = true,
   disableLinkSafety,
+  loopbackPreview = false,
   documentAssets,
   onShowPopup,
   mermaidControls = defaultMermaidControls,
@@ -369,6 +371,7 @@ export function MarkdownContent({
     directory,
     fileReferences,
     fileNavigation,
+    loopbackPreview,
     purpose,
     disableLinkSafety,
     theme,
@@ -379,7 +382,7 @@ export function MarkdownContent({
     confirmFile,
     code,
   }), [
-    directory, fileReferences, fileNavigation, purpose, disableLinkSafety, theme,
+    directory, fileReferences, fileNavigation, loopbackPreview, purpose, disableLinkSafety, theme,
     mermaidControls, allowMermaidWheelEvents, onShowPopup, onExportCode, confirmFile, code,
   ]);
 
@@ -497,6 +500,7 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
       messageId={messageId}
       onShowPopup={onShowPopup}
       enableFileReferences={enableFileReferences}
+      loopbackPreview
     />
   );
 

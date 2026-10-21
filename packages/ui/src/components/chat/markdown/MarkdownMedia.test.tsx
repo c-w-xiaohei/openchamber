@@ -84,10 +84,17 @@ describe('React-owned Markdown media', () => {
     await act(async () => root.render(null));
     expect(revoked).toHaveLength(2);
   });
-  test('recognizes image video alt text and standalone GitHub links without remote preload', async () => {
-    await act(async () => root.render(<Chat><MarkdownImage src="https://remote.test/asset" alt="clip.mp4" /><MarkdownParagraph node={{ type: 'element', tagName: 'p', properties: {}, children: [{ type: 'element', tagName: 'a', properties: { href: 'https://github.com/user-attachments/assets/123-abcd' }, children: [{ type: 'text', value: 'https://github.com/user-attachments/assets/123-abcd' }] }] }}><a href="https://github.com/user-attachments/assets/123-abcd">https://github.com/user-attachments/assets/123-abcd</a></MarkdownParagraph></Chat>));
+  test('model output clips read nothing until played; documents draw bare GitHub clip URLs as players', async () => {
+    await act(async () => root.render(<Chat><MarkdownImage src="https://remote.test/asset" alt="clip.mp4" /></Chat>));
+    expect(host.querySelectorAll('video')).toHaveLength(1);
+    expect(host.querySelector('video')?.preload).toBe('none');
+    // A bare clip URL on its own line becomes a player in documents only, as before.
+    const bare = <MarkdownParagraph node={{ type: 'element', tagName: 'p', properties: {}, children: [{ type: 'element', tagName: 'a', properties: { href: 'https://github.com/user-attachments/assets/123-abcd' }, children: [{ type: 'text', value: 'https://github.com/user-attachments/assets/123-abcd' }] }] }}><a href="https://github.com/user-attachments/assets/123-abcd">https://github.com/user-attachments/assets/123-abcd</a></MarkdownParagraph>;
+    await act(async () => root.render(<Chat>{bare}</Chat>));
+    expect(host.querySelector('video')).toBeNull();
+    await act(async () => root.render(<Document><MarkdownImage src="https://remote.test/asset" alt="clip.mp4" /><MarkdownParagraph node={{ type: 'element', tagName: 'p', properties: {}, children: [{ type: 'element', tagName: 'a', properties: { href: 'https://github.com/user-attachments/assets/123-abcd' }, children: [{ type: 'text', value: 'https://github.com/user-attachments/assets/123-abcd' }] }] }}><a href="https://github.com/user-attachments/assets/123-abcd">https://github.com/user-attachments/assets/123-abcd</a></MarkdownParagraph></Document>));
     expect(host.querySelectorAll('video')).toHaveLength(2);
-    for (const video of host.querySelectorAll('video')) { expect(video.preload).toBe('none'); expect(video.controls).toBe(true); expect(video.autoplay).toBe(false); }
+    for (const video of host.querySelectorAll('video')) { expect(video.preload).toBe('metadata'); expect(video.controls).toBe(true); expect(video.autoplay).toBe(false); }
     expect(requests).toEqual([]);
   });
   test('remote video failure preserves the original safe link and never exposes an authenticated URL', async () => {

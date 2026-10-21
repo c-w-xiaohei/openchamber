@@ -37,9 +37,15 @@ export function rehypeMarkdownPolicy({ isVSCode }: { isVSCode: boolean }) {
         if (['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'form'].includes(node.tagName)) continue;
         const start = node.position?.start?.offset;
         const authored = start !== undefined && source[start] === '<';
-        if (node.tagName === 'input' && (authored || node.properties.type !== 'checkbox')) continue;
+        // Only checkboxes survive, and the sanitizer disables them.
+        if (node.tagName === 'input' && node.properties.type !== 'checkbox') continue;
         for (const key of Object.keys(node.properties)) {
-          const generated = !authored && (
+          // A document's own `<code class="language-x">` keeps its language;
+          // every other author class could reach the app's utility classes.
+          const authoredLanguage = authored && key === 'className' && node.tagName === 'code'
+            && Array.isArray(node.properties.className)
+            && node.properties.className.every((name) => /^language-[\w#+.-]+$/.test(String(name)));
+          const generated = authoredLanguage || !authored && (
             (key === 'className' && ['code', 'li', 'ul', 'ol', 'section', 'h2', 'a'].includes(node.tagName))
             || (key === 'metastring' && node.tagName === 'code')
             || ['id', 'ariaDescribedBy', 'ariaLabel', 'dataFootnoteRef', 'dataFootnoteBackref', 'dataFootnotes'].includes(key)

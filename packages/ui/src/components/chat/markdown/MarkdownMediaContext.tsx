@@ -32,9 +32,13 @@ export function MarkdownMediaProvider({
   const filePath = documentAssets?.filePath;
   const workspaceRoot = documentAssets?.workspaceRoot;
   // Color scheme and link callbacks can change without revoking loaded assets.
+  // An assistant part's grants are checked against its text, so new text is a
+  // new owner. Tool output, reasoning and documents read their media by path:
+  // keying them on the text would reload every image on each streamed update.
+  const ownerContent = mode === 'assistant' ? content : '';
   const owner = React.useMemo(() => {
-    // Runtime/content are ownership even when the paths and IDs are unchanged.
-    void content;
+    // Runtime and the assistant text are ownership even when paths and IDs are unchanged.
+    void ownerContent;
     void runtimeKey;
     void transportRevision;
     return new MarkdownMediaOwner({
@@ -44,7 +48,7 @@ export function MarkdownMediaProvider({
       messageId,
       documentAssets: filePath ? { filePath, workspaceRoot: workspaceRoot ?? null } : undefined,
     });
-  }, [content, mode, directory, sessionId, messageId, runtimeKey, transportRevision, filePath, workspaceRoot]);
+  }, [ownerContent, mode, directory, sessionId, messageId, runtimeKey, transportRevision, filePath, workspaceRoot]);
   React.useEffect(() => {
     const unsubscribe = subscribeRuntimeEndpointWillChange(() => owner.dispose());
     // StrictMode replays effects with the same memoized owner. Defer final

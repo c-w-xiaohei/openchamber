@@ -156,6 +156,43 @@ test('remote media labels use chat navigation and retain modified-click defaults
   expect(openedLinks).toHaveLength(1);
 });
 
+test('links keep the old renderer behaviour: inert when unsafe, bare URLs LTR, framed favicons, footnotes scroll in place', async () => {
+  openedLinks.length = 0;
+  await render('[bad](javascript:alert(1)) https://example.com/docs [named](https://example.com/page)\n\nNote[^1]\n\n[^1]: The note.');
+  const anchors = Array.from(host.querySelectorAll('a'));
+  const bad = anchors.find((anchor) => anchor.textContent === 'bad');
+  expect(bad?.hasAttribute('href')).toBe(false);
+  expect(bad?.hasAttribute('target')).toBe(false);
+  const bare = anchors.find((anchor) => anchor.textContent === 'https://example.com/docs');
+  expect(bare?.getAttribute('dir')).toBe('ltr');
+  expect(anchors.find((anchor) => anchor.textContent === 'named')?.hasAttribute('dir')).toBe(false);
+  // The favicon sits before its link in a frame, loads lazily and is not part of the link.
+  const favicon = bare?.previousElementSibling;
+  expect(favicon?.getAttribute('data-message-image-export-exclude')).toBe('true');
+  expect(favicon?.querySelector('img')?.getAttribute('loading')).toBe('lazy');
+  expect(bare?.querySelector('img')).toBeNull();
+  await act(async () => { favicon?.querySelector('img')?.dispatchEvent(new window.Event('error')); });
+  expect(bare?.previousElementSibling?.querySelector('img')).toBeFalsy();
+  const footnote = anchors.find((anchor) => anchor.getAttribute('href')?.startsWith('#'));
+  const click = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  footnote?.dispatchEvent(click);
+  expect(click.defaultPrevented).toBe(true);
+  expect(openedLinks).toEqual([]);
+});
+
+test('a code block without a language is labelled text', async () => {
+  await render('```\nplain\n```');
+  expect(host.querySelector('[data-streamdown="code-block-header"]')?.textContent).toContain('text');
+});
+
+test('document images with a numeric width and height scale by their ratio; a height alone stays fixed', async () => {
+  await render('<img src="https://example.com/a.png" width="1920" height="906"> <img src="https://example.com/b.png" height="28">', false, true);
+  const [ratio, fixed] = Array.from(host.querySelectorAll('img'));
+  expect(ratio?.style.aspectRatio.replace(/ /g, '')).toBe('1920/906');
+  expect(ratio?.style.height).toBe('');
+  expect(fixed?.style.height).toBe('28px');
+});
+
 test('whole-message plain copy retains Mermaid source after rich normalization', async () => {
   const { renderMarkdownForExport } = await import('./markdown/renderMarkdownForExport');
   const { serializeRenderedMarkdown } = await import('./markdown/selectionMarkdown');
