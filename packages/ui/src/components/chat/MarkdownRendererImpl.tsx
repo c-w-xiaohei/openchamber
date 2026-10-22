@@ -150,22 +150,30 @@ const components: Components = {
 const renderers = [{ language: 'mermaid', component: MarkdownMermaid }];
 const linkSafety = { enabled: false };
 const remend: StreamdownProps['remend'] = { linkMode: 'text-only', singleTilde: false };
-const BlockArrivalContext = React.createContext({ active: false, firstNewIndex: 0 });
+// Static mode renders the document whole and never reads the block split, but
+// Streamdown still computes it, running the marked lexer over the full text.
+const wholeDocument = (markdown: string) => [markdown];
+// Read once, when a block mounts. The value lives in a ref the provider keeps
+// for its lifetime: a context value that changed with every streamed update
+// re-rendered every block of the reply on each update.
+type BlockArrival = { active: boolean; firstNewIndex: number };
+const BlockArrivalContext = React.createContext<React.RefObject<BlockArrival>>({ current: { active: false, firstNewIndex: 0 } });
 type ArrivalStyle = React.CSSProperties & { '--oc-md-enter-delay': string };
 const arrivalDelayStyle = (delay: number): ArrivalStyle => ({ '--oc-md-enter-delay': `${delay}ms` });
 
-function MarkdownArrivalBlock(props: BlockProps) {
-  const arrival = React.useContext(BlockArrivalContext);
+const MarkdownArrivalBlock = React.memo(function MarkdownArrivalBlock(props: BlockProps) {
+  const arrivalRef = React.useContext(BlockArrivalContext);
   // Only a block committed while the reply streams enters with the reveal; the
   // first block and blocks present when the message mounted do not, so a full
   // initial render does not shimmer. Several blocks committed in one update
   // cascade by 55 ms each, at most four steps. The mount decision is kept
   // across stream settlement and parent updates.
-  const [delay] = React.useState(() => (
-    arrival.active && props.index > 0 && props.index >= arrival.firstNewIndex
+  const [delay] = React.useState(() => {
+    const arrival = arrivalRef.current;
+    return arrival.active && props.index > 0 && props.index >= arrival.firstNewIndex
       ? Math.min(props.index - arrival.firstNewIndex, 4) * 55
-      : null
-  ));
+      : null;
+  });
   if (isInvisibleText(props.content)) return null;
   return (
     <div
@@ -176,7 +184,7 @@ function MarkdownArrivalBlock(props: BlockProps) {
       <Block {...props} />
     </div>
   );
-}
+});
 
 class MarkdownErrorBoundary extends React.Component<
   { content: string; children: React.ReactNode },
@@ -294,10 +302,10 @@ export function MarkdownContent({
   const committedBlockCount = React.useRef<number | null>(null);
   const arrivalActive = mode === 'streaming' && isStreaming && !purpose && committedBlockCount.current !== null;
   const firstNewIndex = committedBlockCount.current ?? 0;
-  const arrival = React.useMemo(
-    () => ({ active: arrivalActive, firstNewIndex }),
-    [arrivalActive, firstNewIndex],
-  );
+  const syntaxVars = React.useMemo(() => getMarkdownSyntaxVars(theme), [theme]);
+  const arrival = React.useRef<BlockArrival>({ active: false, firstNewIndex: 0 });
+  // Blocks read this while they render under this commit, never later.
+  arrival.current = { active: arrivalActive, firstNewIndex };
 
   React.useLayoutEffect(() => {
     const nativeRoot = container.current?.firstElementChild;
@@ -396,6 +404,7 @@ export function MarkdownContent({
       mode={mode}
       isAnimating={isStreaming}
       BlockComponent={MarkdownArrivalBlock}
+      parseMarkdownIntoBlocksFn={mode === 'static' ? wholeDocument : undefined}
       parseIncompleteMarkdown={isStreaming}
       normalizeHtmlIndentation={false}
       animated={false}
@@ -451,7 +460,7 @@ export function MarkdownContent({
         },
         className,
       )}
-      style={getMarkdownSyntaxVars(theme)}
+      style={syntaxVars}
     >
       <MarkdownPresentationContext.Provider value={presentation}>
         <BlockArrivalContext.Provider value={arrival}>

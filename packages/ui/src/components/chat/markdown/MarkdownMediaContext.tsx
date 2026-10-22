@@ -32,10 +32,11 @@ export function MarkdownMediaProvider({
   const filePath = documentAssets?.filePath;
   const workspaceRoot = documentAssets?.workspaceRoot;
   // Color scheme and link callbacks can change without revoking loaded assets.
-  // An assistant part's grants are checked against its text, so new text is a
-  // new owner. Tool output, reasoning and documents read their media by path:
-  // keying them on the text would reload every image on each streamed update.
-  const ownerContent = mode === 'assistant' ? content : '';
+  // A settled assistant part's grants are checked against its text, so new
+  // text is a new owner. While it streams it loads nothing, and tool output,
+  // reasoning and documents read their media by path: keying any of these on
+  // the text rebuilt the owner, or reloaded every image, on each update.
+  const ownerContent = mode === 'assistant' && settled ? content : '';
   const owner = React.useMemo(() => {
     // Runtime and the assistant text are ownership even when paths and IDs are unchanged.
     void ownerContent;

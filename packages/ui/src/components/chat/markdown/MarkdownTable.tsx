@@ -125,19 +125,27 @@ export function MarkdownTable({ node, className, children, ...props }: React.Com
     observer.observe(container);
     return () => observer.disconnect();
   }, [node, measured, settled]);
-  const widths = measured ? fitColumns(measured.natural, measured.available, wrap) : null;
+  const widths = React.useMemo(
+    () => measured ? fitColumns(measured.natural, measured.available, wrap) : null,
+    [measured, wrap],
+  );
   const columns = widths?.map((width, index) => (
     <col key={index} style={{ width }} />
   ));
-  const cellWrap = new Map<Element, boolean>();
-  for (const section of node?.children ?? []) {
-    if (section.type !== 'element') continue;
-    for (const row of section.children) {
-      if (row.type !== 'element' || row.tagName !== 'tr') continue;
-      const cells = row.children.filter((cell): cell is Element => cell.type === 'element');
-      cells.forEach((cell, index) => cellWrap.set(cell, Boolean(widths && measured && measured.natural[index] > widths[index])));
+  // A new map re-renders every cell, so it changes only with the table's
+  // content or its column widths.
+  const cellWrap = React.useMemo(() => {
+    const result = new Map<Element, boolean>();
+    for (const section of node?.children ?? []) {
+      if (section.type !== 'element') continue;
+      for (const row of section.children) {
+        if (row.type !== 'element' || row.tagName !== 'tr') continue;
+        const cells = row.children.filter((cell): cell is Element => cell.type === 'element');
+        cells.forEach((cell, index) => result.set(cell, Boolean(widths && measured && measured.natural[index] > widths[index])));
+      }
     }
-  }
+    return result;
+  }, [node, widths, measured]);
   const [copied, setCopied] = React.useState(false);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const { t } = useI18n();
