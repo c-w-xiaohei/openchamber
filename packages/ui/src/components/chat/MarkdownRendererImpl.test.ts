@@ -510,10 +510,10 @@ test('exports the shared Markdown renderer with bounded real highlighting and no
   Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: false });
   try { image = await renderMarkdownForExport(imageSource, { purpose: 'image' }); }
   finally { Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true }); }
-  expect(image?.querySelector('code span[style*="--sdm-c"]')).not.toBeNull();
+  expect(image?.querySelector('code span[style*="color"]')).not.toBeNull();
   const cards = Array.from(image?.querySelectorAll('[data-streamdown="code-block"]') ?? []);
   expect(cards).toHaveLength(4);
-  expect(cards.slice(0, 2).every((card) => card.querySelector('code span[style*="--sdm-c"]'))).toBe(true);
+  expect(cards.slice(0, 2).every((card) => card.querySelector('code span[style*="color"]'))).toBe(true);
   expect(Array.from(cards[0].querySelectorAll('code > span'), (row) => row.textContent?.replace(/^\n$/, '')).join('\n')).toBe('const value = 1;\n\n');
   expect(cards[2].querySelector('code')?.textContent?.trim()).toBe('');
   const fallbackRows = Array.from(cards[3].querySelectorAll('code > span'), (row) => row.textContent);

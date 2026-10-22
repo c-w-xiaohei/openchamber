@@ -1369,7 +1369,8 @@ diffs-container {
 }
 
 /* Lists retain an outside marker and a logical gutter in mixed-direction prose. */
-.markdown-content :is(ul, ol) {
+.markdown-content ul,
+.markdown-content ol {
   list-style-position: outside;
   padding-inline-start: 1.5rem;
 }
@@ -1382,7 +1383,8 @@ diffs-container {
   display: block;
 }
 
-.markdown-content li > :is(ul, ol) {
+.markdown-content li > ul,
+.markdown-content li > ol {
   margin-block: 0;
   padding-inline-start: 1.5rem;
 }
@@ -1433,8 +1435,18 @@ diffs-container {
   margin-block-end: var(--markdown-paragraph-spacing);
 }
 
-.markdown-content [data-oc-streamdown] > :is(h1, h2, h3, h4, h5, h6),
-.markdown-content [data-oc-markdown-block] > :is(h1, h2, h3, h4, h5, h6) {
+.markdown-content [data-oc-streamdown] > h1,
+.markdown-content [data-oc-streamdown] > h2,
+.markdown-content [data-oc-streamdown] > h3,
+.markdown-content [data-oc-streamdown] > h4,
+.markdown-content [data-oc-streamdown] > h5,
+.markdown-content [data-oc-streamdown] > h6,
+.markdown-content [data-oc-markdown-block] > h1,
+.markdown-content [data-oc-markdown-block] > h2,
+.markdown-content [data-oc-markdown-block] > h3,
+.markdown-content [data-oc-markdown-block] > h4,
+.markdown-content [data-oc-markdown-block] > h5,
+.markdown-content [data-oc-markdown-block] > h6 {
   --oc-block-margin-start: 1.25rem;
   --oc-block-margin-end: 0.5rem;
   margin-block-start: 1.25rem;
@@ -1580,7 +1592,13 @@ diffs-container {
 
 /* GitHub writes `<summary><h3>Findings</h3></summary>`: like GitHub, the
    heading keeps its size but sits on the chevron's line without margins. */
-.markdown-content details > summary :is(h1, h2, h3, h4, h5, h6, p) {
+.markdown-content details > summary h1,
+.markdown-content details > summary h2,
+.markdown-content details > summary h3,
+.markdown-content details > summary h4,
+.markdown-content details > summary h5,
+.markdown-content details > summary h6,
+.markdown-content details > summary p {
   display: inline;
   margin: 0;
 }
@@ -1725,7 +1743,8 @@ diffs-container {
   border-bottom: 0;
 }
 
-.markdown-content :is([data-streamdown="table-cell"], [data-streamdown="table-header-cell"]) {
+.markdown-content [data-streamdown="table-cell"],
+.markdown-content [data-streamdown="table-header-cell"] {
   min-width: 120px;
   padding: 0.625rem 1rem;
   border-inline-end: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
@@ -1740,7 +1759,8 @@ diffs-container {
   color: var(--foreground);
 }
 
-.markdown-content :is(td, th):last-child {
+.markdown-content td:last-child,
+.markdown-content th:last-child {
   border-inline-end: 0;
 }
 
@@ -1759,7 +1779,8 @@ diffs-container {
   table-layout: auto;
 }
 
-.markdown-content [data-streamdown="table"][data-oc-table-layout="natural"] :is(td, th) {
+.markdown-content [data-streamdown="table"][data-oc-table-layout="natural"] td,
+.markdown-content [data-streamdown="table"][data-oc-table-layout="natural"] th {
   white-space: nowrap;
 }
 
@@ -1785,33 +1806,9 @@ diffs-container {
   color: var(--shiki-light, inherit);
 }
 
-.markdown-content [data-streamdown="code-block-body"] span[style*="--sdm-c"] {
-  color: var(--sdm-c) !important;
-}
-
-.markdown-content [data-streamdown="code-block-body"] span[style*="--sdm-tbg"] {
-  background-color: var(--sdm-tbg) !important;
-}
-
-.markdown-content [data-streamdown="code-block-body"] span[style*="--shiki-light"] {
-  color: var(--shiki-light) !important;
-}
-
-.markdown-content [data-streamdown="code-block-body"] span[style*="--shiki-light-bg"] {
-  background-color: var(--shiki-light-bg) !important;
-}
-
 .dark .markdown-content [data-streamdown="code-block-body"] {
   background-color: transparent;
   color: var(--shiki-dark, var(--shiki-light, inherit));
-}
-
-.dark .markdown-content [data-streamdown="code-block-body"] span[style*="--shiki-dark"] {
-  color: var(--shiki-dark) !important;
-}
-
-.dark .markdown-content [data-streamdown="code-block-body"] span[style*="--shiki-dark-bg"] {
-  background-color: var(--shiki-dark-bg) !important;
 }
 
 /* Reduce code block header height */
@@ -1900,7 +1897,7 @@ diffs-container {
   background: transparent !important;
 }
 
-.markdown-content [data-streamdown="code-block-body"] > * {
+.markdown-content [data-streamdown="code-block-body"] > pre {
   border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -1916,7 +1913,7 @@ diffs-container {
 
 /* Native counters keep numbers out of source text. Only numbered blocks
    reserve a gutter; noLineNumbers fences keep their full content width. */
-.markdown-content [data-streamdown="code-block-body"] code:has(> span[class*="before:content-"]) {
+.markdown-content [data-streamdown="code-block-body"] code:has(> .before\:content-\[counter\(line\)\]) {
   display: block;
   padding-inline-start: 2.75rem;
   background-image: linear-gradient(
@@ -1928,7 +1925,7 @@ diffs-container {
   background-size: 1px 100%;
 }
 
-.markdown-content [data-streamdown="code-block-body"] code > span[class*="before:content-"]::before {
+.markdown-content [data-streamdown="code-block-body"] code > .before\:content-\[counter\(line\)\]::before {
   content: counter(line) / '';
   float: left;
   width: 2rem;
@@ -1948,12 +1945,14 @@ diffs-container {
   overflow-x: hidden;
 }
 
-.markdown-content[data-code-wrap="true"] [data-streamdown="code-block-body"] :is(pre, code) {
+.markdown-content[data-code-wrap="true"] [data-streamdown="code-block-body"] pre,
+.markdown-content[data-code-wrap="true"] [data-streamdown="code-block-body"] code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.markdown-content[data-code-wrap="false"] [data-streamdown="code-block-body"] :is(pre, code) {
+.markdown-content[data-code-wrap="false"] [data-streamdown="code-block-body"] pre,
+.markdown-content[data-code-wrap="false"] [data-streamdown="code-block-body"] code {
   white-space: pre;
   overflow-wrap: normal;
 }
@@ -2057,7 +2056,8 @@ diffs-container {
   overflow: visible !important;
 }
 
-[data-message-image-export="true"] [data-streamdown="code-block-body"] :is(pre, code) {
+[data-message-image-export="true"] [data-streamdown="code-block-body"] pre,
+[data-message-image-export="true"] [data-streamdown="code-block-body"] code {
   white-space: pre-wrap !important;
   overflow-wrap: anywhere !important;
 }

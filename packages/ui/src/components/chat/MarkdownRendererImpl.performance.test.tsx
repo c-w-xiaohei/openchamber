@@ -71,7 +71,7 @@ test('warm code is highlighted at the first layout commit and source changes nev
   function Capture({ code, language }: { code: string; language: string }) {
     React.useLayoutEffect(() => {
       const body = host.querySelector('[data-streamdown="code-block-body"]');
-      commits.push({ text: body?.textContent ?? '', colored: !!body?.querySelector('span[style*="--sdm-c"]') });
+      commits.push({ text: body?.textContent ?? '', colored: !!body?.querySelector('span[style*="color"]') });
     }, [code, language]);
     return <I18nProvider><MarkdownContent content={`\`\`\`${language}\n${code}\n\`\`\``}
       mode="streaming" enableFileReferences={false} /></I18nProvider>;
@@ -143,14 +143,14 @@ test('append results advance while newer requests are pending without resetting 
       expect(text()).toBe(prefix);
       await draw('const stable = changed;\n');
       expect(text()).toBe('const stable = changed;\n');
-      expect(host.querySelector('pre code span[style*="--sdm-c"]')).toBeNull();
+      expect(host.querySelector('pre code span[style*="color"]')).toBeNull();
       await draw(original);
       await draw(prefix, 'javascript');
       expect(text()).toBe(prefix);
-      expect(host.querySelector('pre code span[style*="--sdm-c"]')).toBeNull();
+      expect(host.querySelector('pre code span[style*="color"]')).toBeNull();
       await draw(original);
       await draw(prefix + 'other', 'typescript', '/other-context');
-      expect(host.querySelector('pre code span[style*="--sdm-c"]')).toBeNull();
+      expect(host.querySelector('pre code span[style*="color"]')).toBeNull();
       await draw(original);
       const slow = original + ' slow';
       const fast = slow + ' fast';
@@ -175,7 +175,7 @@ test('append results advance while newer requests are pending without resetting 
       const overBudget = prefix + 'line\n'.repeat(1200);
       await draw(overBudget);
       expect(text()).toBe(overBudget);
-      expect(host.querySelector('pre code span[style*="--sdm-c"]')).toBeNull();
+      expect(host.querySelector('pre code span[style*="color"]')).toBeNull();
     } finally { observer.disconnect(); }
   } finally {
     await act(() => root.render(null));

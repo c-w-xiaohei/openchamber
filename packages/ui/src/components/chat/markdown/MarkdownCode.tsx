@@ -17,8 +17,6 @@ import { useMarkdownPresentation } from './MarkdownPresentationContext';
 import { activateMarkdownFile, useOpenMarkdownFile } from './markdownFileReferences';
 import type { MarkdownCodePlugin } from './streamdownCode';
 
-type TokenStyle = React.CSSProperties & { '--sdm-c'?: string; '--sdm-tbg'?: string };
-
 // Complete prefix rows keep their identity in the worker client, so appending
 // code only renders changed rows. React owns every node; no HTML patching.
 const CodeLine = React.memo(function CodeLine({ tokens }: { tokens: HighlightToken[] }) {
@@ -26,10 +24,10 @@ const CodeLine = React.memo(function CodeLine({ tokens }: { tokens: HighlightTok
   return (
     <span className="block before:content-[counter(line)] before:[counter-increment:line]">
       {empty ? '\n' : tokens.map((token, index) => {
-        const style: TokenStyle = {
+        const style: React.CSSProperties = {
           ...token.htmlStyle,
-          '--sdm-c': token.color,
-          '--sdm-tbg': token.bgColor,
+          color: token.color,
+          backgroundColor: token.bgColor,
         };
         return <span key={index} style={style} {...token.htmlAttrs}>{token.content}</span>;
       })}

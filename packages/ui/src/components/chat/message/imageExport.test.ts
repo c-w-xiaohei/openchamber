@@ -76,7 +76,7 @@ describe('turn image export', () => {
         expect(diagram?.outerHTML).not.toContain('var(--surface-');
         expect(diagram?.outerHTML).not.toContain('var(--primary-base)');
         expect(source.querySelector('[data-streamdown="code-block"] pre code')?.textContent).toContain('const files = 2');
-        expect(source.querySelector('pre code span[style*="--sdm-c"]')).not.toBeNull();
+        expect(source.querySelector('pre code span[style*="color"]')).not.toBeNull();
         expect(source.querySelector('table a')?.getAttribute('href')).toBe('https://example.com/docs');
         expect(source.querySelector('details summary')?.textContent).toBe('More');
         expect(source.querySelector('details')?.textContent).toContain('Hidden answer.');
