@@ -117,6 +117,7 @@ import { PermissionDock } from './PermissionDock';
 import { FormDock } from './FormDock';
 import { ensureSpaceArchives, useSpaceArchiveOf } from '@/lib/spaces/space-archives';
 import { getRuntimeKey } from '@/lib/runtime-switch';
+import { isMobileSurfaceRuntime } from '@/lib/runtimeSurface';
 import { createFirstVisibleSessionPerformanceTracker } from '@/sync/session-load-performance';
 import { isChatDirectoryPath } from '@/lib/chatDirectories';
 
@@ -255,6 +256,12 @@ type ChatViewportProps = {
     isLoadingOlderPrompts: boolean;
     onLoadEarlierPrompts: () => void;
 };
+
+// Sessions kept mounted per chat column, the open one included, so returning
+// to a recent one reuses its timeline. Each retained timeline costs a few MB
+// of DOM, and a phone's web view is killed under memory pressure, so the
+// mobile surface keeps only the open session.
+const retainedTimelines = () => (isMobileSurfaceRuntime() ? 1 : 4);
 
 const ChatViewport = React.memo(({
     placeholder,
@@ -543,13 +550,18 @@ const ChatViewport = React.memo(({
                 aria-hidden={isDesktopExpandedInput}
             >
                 <div className="absolute inset-0">
+                    {/* Retained by session ID: the session key also holds the
+                        directory, which settles after the session opens, and
+                        a key change left a hidden second copy of the open
+                        session. The list still remounts on a key change. */}
                     <KeepAlive
                         key={getRuntimeKey()}
-                        cacheKey={showingTranscript ? currentSessionKey : null}
-                        capacity={4}
+                        cacheKey={showingTranscript ? currentSessionId : null}
+                        capacity={retainedTimelines()}
                     >
                         <ChatColumnSessionContext.Provider value={session}>
                             <MessageList
+                                key={currentSessionKey}
                                 ref={messageListRef}
                                 sessionKey={currentSessionId}
                                 messages={renderedMessages}

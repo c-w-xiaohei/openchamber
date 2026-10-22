@@ -51,7 +51,12 @@ local movement and subsequent demand without discarding a valid shared read.
 ## Session list retention
 
 `ChatViewport` keeps up to four `MessageList` subtrees, including the visible
-one, through `KeepAlive`. The shown selection drives the LRU; loading, error,
+one, through `KeepAlive`; the mobile surface keeps only the visible one, because
+a phone's web view is killed under memory pressure. Entries are keyed by
+session ID: the composite session key also carries the directory, which settles
+after a session opens, and keying the pool by it retained a hidden second copy
+of the open session. Inside an entry the list still remounts on a session key
+change. The shown selection drives the LRU; loading, error,
 empty and draft placeholders hide the pool without replacing its host. Leaving
 the chat column releases the pool. Each stored JSX entry supplies its own
 `ChatColumnSessionContext`, so hidden messages retain their session identity.
@@ -69,7 +74,7 @@ entry supplies current authoritative messages through its existing props.
 Loader request generations do not control UI identity: a tail refresh can
 advance them without replacing history. Runtime changes replace the pool. Hidden JSX
 can retain old message references until LRU eviction or column teardown, so
-the four-entry limit is a count bound, not a byte budget.
+the entry limit is a count bound, not a byte budget.
 
 ### Why the pool sits at MessageList
 
