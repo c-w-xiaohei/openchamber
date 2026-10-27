@@ -147,7 +147,7 @@ describe('managed OpenCode config file', () => {
       includeMemory: false,
       includeKnowledge: false,
       includeNotify: false,
-      includeRender: false,
+      includeOpenUI: false,
       includeImage: false,
       includeWorkflow: false,
       codeMode: false,
@@ -189,15 +189,15 @@ describe('managed OpenCode config file', () => {
     expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeControl: true, includeSchedule: false }));
   });
 
-  it('injects the render tool by default and leaves it out once switched off', async () => {
+  it('injects OpenUI tools by default and leaves them out once switched off', async () => {
     const { runtime, current, agentToolRuntime } = await createHarness({ settings: {} });
 
     await runtime.buildManagedChildEnv();
-    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeRender: true }));
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeOpenUI: true }));
 
     current.settings = { agentRenderToolEnabled: false };
     await runtime.refreshManagedConfigFile();
-    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeRender: false }));
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeOpenUI: false }));
   });
 
   it('injects the notify tool only when it is switched on', async () => {
@@ -214,7 +214,7 @@ describe('managed OpenCode config file', () => {
       includeMemory: false,
       includeKnowledge: false,
       includeNotify: true,
-      includeRender: false,
+      includeOpenUI: false,
       includeImage: false,
       includeWorkflow: false,
       codeMode: false,
@@ -235,7 +235,7 @@ describe('managed OpenCode config file', () => {
       includeMemory: false,
       includeKnowledge: true,
       includeNotify: false,
-      includeRender: true,
+      includeOpenUI: true,
       includeImage: false,
       includeWorkflow: false,
       codeMode: true,
